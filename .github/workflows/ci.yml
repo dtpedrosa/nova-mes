@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # Install all workspaces (hoists deps to root node_modules, which is on the
+      # module resolution path for services/shared and every service).
+      - name: Install dependencies
+        run: npm install --workspaces --include-workspace-root
+
+      # Syntax-check every service + shared module + loadgen (CommonJS).
+      - name: Syntax-check backend and loadgen
+        run: |
+          node --check services/shared/telemetry.js
+          node --check services/shared/bizevents.js
+          node --check services/shared/logger.js
+          node --check services/shared/flags.js
+          node --check services/mes-web/server.js
+          node --check services/mes-web/public/app.js
+          node --check services/batch-service/server.js
+          node --check services/dispensing-service/server.js
+          node --check loadgen/loadgen.js
+
+      # Syntax-check the browser OTel module (ES module).
+      - name: Syntax-check browser RUM module
+        run: node --input-type=module --check < services/mes-web/public/rum-otel.js
+
+      # Fault-injection flag logic smoke test.
+      - name: Flag store smoke test
+        run: |
+          node -e "
+          const { FlagStore } = require('./services/shared/flags');
+          const s = new FlagStore();
+          if (!Object.values(s.all()).every(v => v === false)) throw new Error('defaults not all off');
+          s.scenario('deviation');
+          if (!(s.get('slow_dispensing') && s.get('dispensing_exception'))) throw new Error('deviation scenario wrong');
+          s.scenario('release_failure');
+          if (!(s.get('db_error_batch_release') && s.get('gxp_integration_failure'))) throw new Error('release_failure scenario wrong');
+          if (s.get('slow_dispensing') !== false) throw new Error('scenario did not reset prior flags');
+          s.reset();
+          if (!Object.values(s.all()).every(v => v === false)) throw new Error('reset failed');
+          console.log('flag store smoke test passed');
+          "
+
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t nova-mes:ci .

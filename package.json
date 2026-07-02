@@ -1,0 +1,22 @@
+{
+  "name": "nova-pharma-mes-demo",
+  "version": "1.0.0",
+  "description": "Anonymized pharma MES demo instrumented for Dynatrace: traces, metrics, logs, business events, RUM, load generator, and fault-injection feature flags.",
+  "private": true,
+  "workspaces": [
+    "services/mes-web",
+    "services/batch-service",
+    "services/dispensing-service",
+    "loadgen"
+  ],
+  "scripts": {
+    "start:web": "node services/mes-web/server.js",
+    "start:batch": "node services/batch-service/server.js",
+    "start:dispensing": "node services/dispensing-service/server.js",
+    "start:loadgen": "node loadgen/loadgen.js",
+    "dev": "concurrently -n web,batch,disp -c cyan,green,magenta \"npm:start:batch\" \"npm:start:dispensing\" \"npm:start:web\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}

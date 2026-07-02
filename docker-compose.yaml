@@ -1,0 +1,76 @@
+# One-command local run of the whole Nova MES demo — pure OpenTelemetry, no OneAgent.
+#
+# Telemetry path:
+#   app services  --OTLP-->  otel-collector  --OTLP/HTTP + Api-Token-->  Dynatrace
+#   browser (OTel Web SDK)  -->  /otlp-proxy on mes-web  -->  otel-collector  -->  Dynatrace
+#
+#   export DT_ENDPOINT="https://<env>.live.dynatrace.com/api/v2/otlp"
+#   export DT_API_TOKEN="dt0c01.XXXX"   # scopes: openTelemetryTrace.ingest, metrics.ingest, logs.ingest, bizevents.ingest
+#   docker compose up --build
+#
+# Then open http://localhost:4000
+#
+# Omit DT_ENDPOINT/DT_API_TOKEN to run fully local: the collector still receives
+# everything and logs it via its debug exporter; the app works end to end.
+
+x-app-env: &app-env
+  # App services and the browser proxy send to the collector, never straight to the tenant.
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+  RUM_OTLP_TARGET: http://otel-collector:4318
+  # bizevents go direct to the tenant API (separate from OTLP); optional locally.
+  DT_TENANT_URL: ${DT_TENANT_URL:-}
+  DT_API_TOKEN: ${DT_API_TOKEN:-}
+  NOVA_SITE: Northgate
+  DEPLOY_ENV: demo
+
+services:
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.116.0
+    command: ["--config=/etc/otel/collector-config.yaml"]
+    volumes:
+      - ./otel/collector-config.yaml:/etc/otel/collector-config.yaml:ro
+    environment:
+      DT_ENDPOINT: ${DT_ENDPOINT:-https://example.live.dynatrace.com/api/v2/otlp}
+      DT_API_TOKEN: ${DT_API_TOKEN:-dummy-token-local-only}
+    ports: ["4317:4317", "4318:4318"]
+
+  batch-service:
+    build: { context: ., dockerfile: Dockerfile }
+    command: node services/batch-service/server.js
+    environment:
+      <<: *app-env
+      OTEL_SERVICE_NAME: nova-batch-service
+      PORT: "4001"
+    ports: ["4001:4001"]
+    depends_on: [otel-collector]
+
+  dispensing-service:
+    build: { context: ., dockerfile: Dockerfile }
+    command: node services/dispensing-service/server.js
+    environment:
+      <<: *app-env
+      OTEL_SERVICE_NAME: nova-dispensing-service
+      PORT: "4002"
+    ports: ["4002:4002"]
+    depends_on: [otel-collector]
+
+  mes-web:
+    build: { context: ., dockerfile: Dockerfile }
+    command: node services/mes-web/server.js
+    environment:
+      <<: *app-env
+      OTEL_SERVICE_NAME: nova-mes-web
+      PORT: "4000"
+      BATCH_SVC_URL: http://batch-service:4001
+      DISPENSING_SVC_URL: http://dispensing-service:4002
+    ports: ["4000:4000"]
+    depends_on: [batch-service, dispensing-service, otel-collector]
+
+  loadgen:
+    build: { context: ., dockerfile: Dockerfile }
+    command: node loadgen/loadgen.js
+    environment:
+      TARGET: http://mes-web:4000
+      RPS: "2"
+      RELEASE_MIX: "0.4"
+    depends_on: [mes-web]

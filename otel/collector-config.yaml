@@ -1,0 +1,73 @@
+# OpenTelemetry Collector configuration for the Nova MES demo.
+#
+# The Nova services export DELTA-temporality OTLP directly (see shared/telemetry.js),
+# so they need no conversion. This collector is the shared ingest gateway and ALSO
+# carries a cumulativetodelta processor on a separate pipeline for third-party
+# cumulative metric sources (e.g. an OpenTelemetry Astronomy Shop demo) that would
+# otherwise be rejected by Dynatrace.
+#
+# Set DT_ENDPOINT and DT_API_TOKEN in the environment before launching the collector.
+#   DT_ENDPOINT = https://<env>.live.dynatrace.com/api/v2/otlp   (or ActiveGate URL)
+#   DT_API_TOKEN with scopes: metrics.ingest, logs.ingest, openTelemetryTrace.ingest, bizevents.ingest
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    send_batch_size: 512
+    timeout: 5s
+  memory_limiter:
+    check_interval: 2s
+    limit_percentage: 80
+    spike_limit_percentage: 20
+  resourcedetection:
+    detectors: [env, system]
+    timeout: 5s
+  resource:
+    attributes:
+      - key: deployment.environment
+        value: demo
+        action: upsert
+  # Only needed for third-party cumulative sources; harmless for delta inputs
+  # because it acts on the cumulative pipeline below.
+  cumulativetodelta:
+    include:
+      match_type: regexp
+      metrics:
+        - ".*_total$"
+        - ".*\\.count$"
+
+exporters:
+  otlphttp/dynatrace:
+    endpoint: ${env:DT_ENDPOINT}
+    headers:
+      Authorization: "Api-Token ${env:DT_API_TOKEN}"
+  debug:
+    verbosity: normal
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resourcedetection, resource, batch]
+      exporters: [otlphttp/dynatrace]
+    # Nova app metrics: already delta, no conversion.
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, resourcedetection, resource, batch]
+      exporters: [otlphttp/dynatrace]
+    # Third-party cumulative metrics: convert to delta first.
+    metrics/cumulative:
+      receivers: [otlp]
+      processors: [memory_limiter, cumulativetodelta, resource, batch]
+      exporters: [otlphttp/dynatrace]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlphttp/dynatrace]

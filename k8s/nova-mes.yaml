@@ -1,0 +1,165 @@
+# Nova MES on Kubernetes (GKE).
+#
+# Deploys the three services + load generator into the `nova-mes` namespace.
+# The app is instrumented with OpenTelemetry ONLY — no OneAgent. All telemetry
+# (backend + browser) is sent over OTLP to an OpenTelemetry Collector, which
+# forwards to Dynatrace's native OTLP endpoint.
+#
+# Deploy a collector reachable at otel-collector:4318 (use otel/collector-config.yaml)
+# and set the app's OTLP endpoint to it via the nova-mes-otel secret below.
+#
+#   kubectl create namespace nova-mes
+#   kubectl -n nova-mes create secret generic nova-mes-otel \
+#     --from-literal=otlp-endpoint="http://otel-collector:4318" \
+#     --from-literal=otlp-headers="" \
+#     --from-literal=tenant-url="https://<env>.live.dynatrace.com" \
+#     --from-literal=api-token="dt0c01.XXXX"
+#
+#   (The collector holds the Dynatrace token and does the authenticated,
+#    TLS-secured forward to the tenant. Point the app at the collector, not the
+#    tenant, so no token sits in the app pods or reaches the browser.)
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: nova-mes
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nova-batch-service
+  namespace: nova-mes
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: nova-batch-service } }
+  template:
+    metadata:
+      labels: { app: nova-batch-service }
+    spec:
+      containers:
+        - name: batch
+          image: nova-mes:latest
+          imagePullPolicy: IfNotPresent
+          command: ["node", "services/batch-service/server.js"]
+          ports: [{ containerPort: 4001 }]
+          env:
+            - { name: OTEL_SERVICE_NAME, value: nova-batch-service }
+            - { name: PORT, value: "4001" }
+            - { name: NOVA_SITE, value: Northgate }
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              valueFrom: { secretKeyRef: { name: nova-mes-otel, key: otlp-endpoint } }
+            - name: OTEL_EXPORTER_OTLP_HEADERS
+              valueFrom: { secretKeyRef: { name: nova-mes-otel, key: otlp-headers } }
+            - name: DT_TENANT_URL
+              valueFrom: { secretKeyRef: { name: nova-mes-otel, key: tenant-url } }
+            - name: DT_API_TOKEN
+              valueFrom: { secretKeyRef: { name: nova-mes-otel, key: api-token } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: nova-batch-service, namespace: nova-mes }
+spec:
+  selector: { app: nova-batch-service }
+  ports: [{ port: 4001, targetPort: 4001 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nova-dispensing-service
+  namespace: nova-mes
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: nova-dispensing-service } }
+  template:
+    metadata:
+      labels: { app: nova-dispensing-service }
+    spec:
+      containers:
+        - name: dispensing
+          image: nova-mes:latest
+          imagePullPolicy: IfNotPresent
+          command: ["node", "services/dispensing-service/server.js"]
+          ports: [{ containerPort: 4002 }]
+          env:
+            - { name: OTEL_SERVICE_NAME, value: nova-dispensing-service }
+            - { name: PORT, value: "4002" }
+            - { name: NOVA_SITE, value: Northgate }
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              valueFrom: { secretKeyRef: { name: nova-mes-otel, key: otlp-endpoint } }
+            - name: OTEL_EXPORTER_OTLP_HEADERS
+              valueFrom: { secretKeyRef: { name: nova-mes-otel, key: otlp-headers } }
+            - name: DT_TENANT_URL
+              valueFrom: { secretKeyRef: { name: nova-mes-otel, key: tenant-url } }
+            - name: DT_API_TOKEN
+              valueFrom: { secretKeyRef: { name: nova-mes-otel, key: api-token } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: nova-dispensing-service, namespace: nova-mes }
+spec:
+  selector: { app: nova-dispensing-service }
+  ports: [{ port: 4002, targetPort: 4002 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nova-mes-web
+  namespace: nova-mes
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: nova-mes-web } }
+  template:
+    metadata:
+      labels: { app: nova-mes-web }
+    spec:
+      containers:
+        - name: web
+          image: nova-mes:latest
+          imagePullPolicy: IfNotPresent
+          command: ["node", "services/mes-web/server.js"]
+          ports: [{ containerPort: 4000 }]
+          env:
+            - { name: OTEL_SERVICE_NAME, value: nova-mes-web }
+            - { name: PORT, value: "4000" }
+            - { name: NOVA_SITE, value: Northgate }
+            - { name: BATCH_SVC_URL, value: "http://nova-batch-service:4001" }
+            - { name: DISPENSING_SVC_URL, value: "http://nova-dispensing-service:4002" }
+            - { name: RUM_OTLP_TARGET, value: "http://otel-collector:4318" }
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              valueFrom: { secretKeyRef: { name: nova-mes-otel, key: otlp-endpoint } }
+            - name: OTEL_EXPORTER_OTLP_HEADERS
+              valueFrom: { secretKeyRef: { name: nova-mes-otel, key: otlp-headers } }
+            - name: DT_TENANT_URL
+              valueFrom: { secretKeyRef: { name: nova-mes-otel, key: tenant-url } }
+            - name: DT_API_TOKEN
+              valueFrom: { secretKeyRef: { name: nova-mes-otel, key: api-token } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: nova-mes-web, namespace: nova-mes }
+spec:
+  type: LoadBalancer
+  selector: { app: nova-mes-web }
+  ports: [{ port: 80, targetPort: 4000 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nova-loadgen
+  namespace: nova-mes
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: nova-loadgen } }
+  template:
+    metadata:
+      labels: { app: nova-loadgen }
+    spec:
+      containers:
+        - name: loadgen
+          image: nova-mes:latest
+          imagePullPolicy: IfNotPresent
+          command: ["node", "loadgen/loadgen.js"]
+          env:
+            - { name: TARGET, value: "http://nova-mes-web:4000" }
+            - { name: RPS, value: "2" }
+            - { name: RELEASE_MIX, value: "0.4" }
