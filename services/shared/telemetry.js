@@ -29,7 +29,7 @@ const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-htt
 const { OTLPLogExporter } = require('@opentelemetry/exporter-logs-otlp-http');
 const { PeriodicExportingMetricReader, AggregationTemporality } = require('@opentelemetry/sdk-metrics');
 const { BatchLogRecordProcessor } = require('@opentelemetry/sdk-logs');
-const { resourceFromAttributes } = require('@opentelemetry/resources');
+const { Resource } = require('@opentelemetry/resources');
 const {
   ATTR_SERVICE_NAME,
   ATTR_SERVICE_VERSION,
@@ -55,7 +55,7 @@ function startTelemetry(serviceName) {
       if (idx > 0) headers[pair.slice(0, idx).trim()] = pair.slice(idx + 1).trim();
     });
 
-  const resource = resourceFromAttributes({
+  const resource = new Resource({
     [ATTR_SERVICE_NAME]: serviceName,
     [ATTR_SERVICE_VERSION]: process.env.APP_VERSION || '1.0.0',
     'deployment.environment': process.env.DEPLOY_ENV || 'demo',
