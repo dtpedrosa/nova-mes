@@ -23,7 +23,7 @@ spec:
           command: ["node", "loadgen/loadgen.js"]
           env:
             - name: TARGET
-              value: "http://{{ .Release.Name }}-mes-web"
+              value: "http://{{ .Release.Name }}-mes-web.{{ .Release.Namespace }}.svc.cluster.local"
             - name: RPS
               value: {{ .Values.loadgen.rps | quote }}
             - name: RELEASE_MIX

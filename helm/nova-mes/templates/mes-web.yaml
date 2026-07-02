@@ -30,13 +30,13 @@ spec:
             - name: NOVA_SITE
               value: {{ .Values.novaSite | quote }}
             - name: BATCH_SVC_URL
-              value: "http://{{ .Release.Name }}-batch-service:4001"
+              value: "http://{{ .Release.Name }}-batch-service.{{ .Release.Namespace }}.svc.cluster.local:4001"
             - name: DISPENSING_SVC_URL
-              value: "http://{{ .Release.Name }}-dispensing-service:4002"
+              value: "http://{{ .Release.Name }}-dispensing-service.{{ .Release.Namespace }}.svc.cluster.local:4002"
             - name: RUM_OTLP_TARGET
-              value: "http://{{ .Release.Name }}-otel-collector:4318"
+              value: "http://{{ .Release.Name }}-otel-collector.{{ .Release.Namespace }}.svc.cluster.local:4318"
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "http://{{ .Release.Name }}-otel-collector:4318"
+              value: "http://{{ .Release.Name }}-otel-collector.{{ .Release.Namespace }}.svc.cluster.local:4318"
             - name: OTEL_EXPORTER_OTLP_HEADERS
               value: ""
             - name: DT_TENANT_URL
