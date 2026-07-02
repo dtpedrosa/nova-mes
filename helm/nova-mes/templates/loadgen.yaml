@@ -16,6 +16,7 @@ spec:
     spec:
       runtimeClassName: {{ .Values.runtimeClassName }}
       tolerations: {{- toYaml .Values.tolerations | nindent 8 }}
+      dnsConfig: {{- toYaml .Values.dnsConfig | nindent 8 }}
       containers:
         - name: loadgen
           image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
