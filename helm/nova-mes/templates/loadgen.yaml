@@ -14,6 +14,8 @@ spec:
       labels:
         app: {{ .Release.Name }}-loadgen
     spec:
+      runtimeClassName: {{ .Values.runtimeClassName }}
+      tolerations: {{- toYaml .Values.tolerations | nindent 8 }}
       containers:
         - name: loadgen
           image: {{ .Values.image.repository }}:{{ .Values.image.tag }}

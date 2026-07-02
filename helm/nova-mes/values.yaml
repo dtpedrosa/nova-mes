@@ -21,3 +21,10 @@ loadgen:
   enabled: true
   rps: "2"
   releaseMix: "0.4"
+
+# GKE Sandbox (gVisor) — all nodes in dp-apps-2 have this taint
+runtimeClassName: gvisor
+tolerations:
+  - key: sandbox.gke.io/runtime
+    value: gvisor
+    effect: NoSchedule
