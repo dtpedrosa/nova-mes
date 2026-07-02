@@ -1,0 +1,29 @@
+{{- if .Values.loadgen.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-loadgen
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-loadgen
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-loadgen
+    spec:
+      containers:
+        - name: loadgen
+          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["node", "loadgen/loadgen.js"]
+          env:
+            - name: TARGET
+              value: "http://{{ .Release.Name }}-mes-web"
+            - name: RPS
+              value: {{ .Values.loadgen.rps | quote }}
+            - name: RELEASE_MIX
+              value: {{ .Values.loadgen.releaseMix | quote }}
+{{- end }}

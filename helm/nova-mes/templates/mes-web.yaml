@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-mes-web
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-mes-web
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-mes-web
+    spec:
+      containers:
+        - name: web
+          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["node", "services/mes-web/server.js"]
+          ports:
+            - containerPort: 4000
+          env:
+            - name: OTEL_SERVICE_NAME
+              value: nova-mes-web
+            - name: PORT
+              value: "4000"
+            - name: NOVA_SITE
+              value: {{ .Values.novaSite | quote }}
+            - name: BATCH_SVC_URL
+              value: "http://{{ .Release.Name }}-batch-service:4001"
+            - name: DISPENSING_SVC_URL
+              value: "http://{{ .Release.Name }}-dispensing-service:4002"
+            - name: RUM_OTLP_TARGET
+              value: "http://{{ .Release.Name }}-otel-collector:4318"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://{{ .Release.Name }}-otel-collector:4318"
+            - name: OTEL_EXPORTER_OTLP_HEADERS
+              value: ""
+            - name: DT_TENANT_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-otel
+                  key: dt-tenant-url
+            - name: DT_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-otel
+                  key: dt-api-token
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-mes-web
+  namespace: {{ .Release.Namespace }}
+spec:
+  type: LoadBalancer
+  selector:
+    app: {{ .Release.Name }}-mes-web
+  ports:
+    - port: 80
+      targetPort: 4000

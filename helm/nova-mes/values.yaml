@@ -1,0 +1,23 @@
+# Default values for nova-mes.
+# Override with: helm install nova-mes ./helm/nova-mes --values my-values.yaml
+
+image:
+  repository: us-central1-docker.pkg.dev/sales-engineering-emea/nova-mes/nova-mes
+  tag: latest
+  pullPolicy: Always
+
+dynatrace:
+  endpoint: ""    # https://YOUR_ENV.live.dynatrace.com/api/v2/otlp
+  apiToken: ""    # dt0c01.XXXX  (scopes: traces, metrics, logs, bizevents ingest)
+  tenantUrl: ""   # https://YOUR_ENV.live.dynatrace.com (for business events)
+
+novaSite: Northgate
+deployEnv: demo
+
+collector:
+  image: otel/opentelemetry-collector-contrib:0.127.0
+
+loadgen:
+  enabled: true
+  rps: "2"
+  releaseMix: "0.4"

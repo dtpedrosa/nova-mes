@@ -1,0 +1,110 @@
+# OpenTelemetry Collector — deployed as a plain Deployment + Service.
+# Reads DT credentials from the nova-mes-otel secret (same secret the app uses).
+# App pods point to http://otel-collector:4318; this collector forwards to Dynatrace.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-config
+  namespace: nova-mes
+data:
+  config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+    processors:
+      memory_limiter:
+        check_interval: 2s
+        limit_percentage: 80
+        spike_limit_percentage: 20
+      batch:
+        send_batch_size: 512
+        timeout: 5s
+      resource:
+        attributes:
+          - key: deployment.environment
+            value: demo
+            action: upsert
+
+    exporters:
+      otlphttp/dynatrace:
+        endpoint: ${env:DT_ENDPOINT}
+        headers:
+          Authorization: "Api-Token ${env:DT_API_TOKEN}"
+
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, resource, batch]
+          exporters: [otlphttp/dynatrace]
+        metrics:
+          receivers: [otlp]
+          processors: [memory_limiter, resource, batch]
+          exporters: [otlphttp/dynatrace]
+        logs:
+          receivers: [otlp]
+          processors: [memory_limiter, resource, batch]
+          exporters: [otlphttp/dynatrace]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otel-collector
+  namespace: nova-mes
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: otel-collector
+  template:
+    metadata:
+      labels:
+        app: otel-collector
+    spec:
+      containers:
+        - name: collector
+          image: otel/opentelemetry-collector-contrib:0.127.0
+          args: ["--config=/etc/otel/config.yaml"]
+          ports:
+            - containerPort: 4317
+            - containerPort: 4318
+          env:
+            - name: DT_ENDPOINT
+              valueFrom:
+                secretKeyRef:
+                  name: nova-mes-otel
+                  key: dt-endpoint
+            - name: DT_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: nova-mes-otel
+                  key: api-token
+          volumeMounts:
+            - name: config
+              mountPath: /etc/otel
+      volumes:
+        - name: config
+          configMap:
+            name: otel-collector-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector
+  namespace: nova-mes
+spec:
+  selector:
+    app: otel-collector
+  ports:
+    - name: grpc
+      port: 4317
+      targetPort: 4317
+    - name: http
+      port: 4318
+      targetPort: 4318

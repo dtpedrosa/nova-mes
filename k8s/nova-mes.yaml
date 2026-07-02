@@ -1,23 +1,18 @@
 # Nova MES on Kubernetes (GKE).
 #
 # Deploys the three services + load generator into the `nova-mes` namespace.
-# The app is instrumented with OpenTelemetry ONLY — no OneAgent. All telemetry
-# (backend + browser) is sent over OTLP to an OpenTelemetry Collector, which
-# forwards to Dynatrace's native OTLP endpoint.
+# The app sends OTLP to otel-collector:4318 (see k8s/otel-collector.yaml),
+# which forwards to Dynatrace. No OneAgent required.
 #
-# Deploy a collector reachable at otel-collector:4318 (use otel/collector-config.yaml)
-# and set the app's OTLP endpoint to it via the nova-mes-otel secret below.
-#
-#   kubectl create namespace nova-mes
-#   kubectl -n nova-mes create secret generic nova-mes-otel \
-#     --from-literal=otlp-endpoint="http://otel-collector:4318" \
-#     --from-literal=otlp-headers="" \
-#     --from-literal=tenant-url="https://<env>.live.dynatrace.com" \
-#     --from-literal=api-token="dt0c01.XXXX"
-#
-#   (The collector holds the Dynatrace token and does the authenticated,
-#    TLS-secured forward to the tenant. Point the app at the collector, not the
-#    tenant, so no token sits in the app pods or reaches the browser.)
+# Deploy:
+#   1. kubectl create namespace nova-mes
+#   2. kubectl -n nova-mes create secret generic nova-mes-otel \
+#        --from-literal=otlp-endpoint="http://otel-collector:4318" \
+#        --from-literal=otlp-headers="" \
+#        --from-literal=tenant-url="https://<env>.live.dynatrace.com" \
+#        --from-literal=api-token="dt0c01.XXXX" \
+#        --from-literal=dt-endpoint="https://<env>.live.dynatrace.com/api/v2/otlp"
+#   3. kubectl apply -f k8s/
 ---
 apiVersion: v1
 kind: Namespace
@@ -38,8 +33,8 @@ spec:
     spec:
       containers:
         - name: batch
-          image: nova-mes:latest
-          imagePullPolicy: IfNotPresent
+          image: us-central1-docker.pkg.dev/sales-engineering-emea/nova-mes/nova-mes:latest
+          imagePullPolicy: Always
           command: ["node", "services/batch-service/server.js"]
           ports: [{ containerPort: 4001 }]
           env:
@@ -76,8 +71,8 @@ spec:
     spec:
       containers:
         - name: dispensing
-          image: nova-mes:latest
-          imagePullPolicy: IfNotPresent
+          image: us-central1-docker.pkg.dev/sales-engineering-emea/nova-mes/nova-mes:latest
+          imagePullPolicy: Always
           command: ["node", "services/dispensing-service/server.js"]
           ports: [{ containerPort: 4002 }]
           env:
@@ -114,8 +109,8 @@ spec:
     spec:
       containers:
         - name: web
-          image: nova-mes:latest
-          imagePullPolicy: IfNotPresent
+          image: us-central1-docker.pkg.dev/sales-engineering-emea/nova-mes/nova-mes:latest
+          imagePullPolicy: Always
           command: ["node", "services/mes-web/server.js"]
           ports: [{ containerPort: 4000 }]
           env:
@@ -156,8 +151,8 @@ spec:
     spec:
       containers:
         - name: loadgen
-          image: nova-mes:latest
-          imagePullPolicy: IfNotPresent
+          image: us-central1-docker.pkg.dev/sales-engineering-emea/nova-mes/nova-mes:latest
+          imagePullPolicy: Always
           command: ["node", "loadgen/loadgen.js"]
           env:
             - { name: TARGET, value: "http://nova-mes-web:4000" }

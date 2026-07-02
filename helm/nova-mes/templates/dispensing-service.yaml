@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-dispensing-service
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-dispensing-service
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-dispensing-service
+    spec:
+      containers:
+        - name: dispensing
+          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["node", "services/dispensing-service/server.js"]
+          ports:
+            - containerPort: 4002
+          env:
+            - name: OTEL_SERVICE_NAME
+              value: nova-dispensing-service
+            - name: PORT
+              value: "4002"
+            - name: NOVA_SITE
+              value: {{ .Values.novaSite | quote }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://{{ .Release.Name }}-otel-collector:4318"
+            - name: OTEL_EXPORTER_OTLP_HEADERS
+              value: ""
+            - name: DT_TENANT_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-otel
+                  key: dt-tenant-url
+            - name: DT_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-otel
+                  key: dt-api-token
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-dispensing-service
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector:
+    app: {{ .Release.Name }}-dispensing-service
+  ports:
+    - port: 4002
+      targetPort: 4002
