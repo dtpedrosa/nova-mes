@@ -84,6 +84,8 @@ spec:
                 secretKeyRef:
                   name: {{ .Release.Name }}-otel
                   key: dt-api-token
+            - name: GODEBUG
+              value: "http2client=0"
           volumeMounts:
             - name: config
               mountPath: /etc/otel
