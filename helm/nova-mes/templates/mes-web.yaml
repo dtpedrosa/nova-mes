@@ -14,6 +14,7 @@ spec:
         app: {{ .Release.Name }}-mes-web
     spec:
       tolerations: {{- toYaml .Values.tolerations | nindent 8 }}
+      dnsConfig: {{- toYaml .Values.dnsConfig | nindent 8 }}
       containers:
         - name: web
           image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
