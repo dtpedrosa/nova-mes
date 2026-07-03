@@ -16,8 +16,8 @@ data:
     processors:
       memory_limiter:
         check_interval: 2s
-        limit_percentage: 80
-        spike_limit_percentage: 20
+        limit_mib: 400
+        spike_limit_mib: 80
       batch:
         send_batch_size: 512
         timeout: 5s
