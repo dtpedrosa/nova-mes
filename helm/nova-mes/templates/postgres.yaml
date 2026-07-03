@@ -30,7 +30,9 @@ spec:
       containers:
         - name: postgres
           image: postgres:16-alpine
-          command: ["postgres", "-c", "shared_memory_type=mmap"]
+          # Use args (not command) so the image ENTRYPOINT docker-entrypoint.sh still
+          # runs initdb and drops privileges from root to the postgres user.
+          args: ["-c", "shared_memory_type=mmap"]
           ports:
             - containerPort: 5432
           env:
