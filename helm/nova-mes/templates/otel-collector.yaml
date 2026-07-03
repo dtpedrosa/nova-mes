@@ -72,6 +72,8 @@ spec:
             - containerPort: 4317
             - containerPort: 4318
           env:
+            - name: GODEBUG
+              value: "http2client=0"
             - name: DT_ENDPOINT
               valueFrom:
                 secretKeyRef:
