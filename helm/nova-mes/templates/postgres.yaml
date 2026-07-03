@@ -1,0 +1,87 @@
+{{- if .Values.postgres.enabled }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .Release.Name }}-postgres
+  namespace: {{ .Release.Namespace }}
+type: Opaque
+stringData:
+  db-password: {{ .Values.postgres.password | quote }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Release.Name }}-postgres
+  namespace: {{ .Release.Namespace }}
+spec:
+  serviceName: {{ .Release.Name }}-postgres-headless
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-postgres
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-postgres
+    spec:
+      tolerations: {{- toYaml .Values.tolerations | nindent 8 }}
+      dnsConfig: {{- toYaml .Values.dnsConfig | nindent 8 }}
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          command: ["postgres", "-c", "shared_memory_type=mmap"]
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: nova_mes
+            - name: POSTGRES_USER
+              value: nova_mes
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-postgres
+                  key: db-password
+          volumeMounts:
+            - name: pgdata
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "nova_mes"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+  volumeClaimTemplates:
+    - metadata:
+        name: pgdata
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ .Values.postgres.storageSize }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-postgres-headless
+  namespace: {{ .Release.Namespace }}
+spec:
+  clusterIP: None
+  selector:
+    app: {{ .Release.Name }}-postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-postgres
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector:
+    app: {{ .Release.Name }}-postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+{{- end }}

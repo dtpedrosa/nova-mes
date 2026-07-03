@@ -1,6 +1,6 @@
 # Nova MES on Kubernetes (GKE).
 #
-# Deploys the three services + load generator into the `nova-mes` namespace.
+# Deploys the three services + load generator + postgres into the `nova-mes` namespace.
 # The app sends OTLP to otel-collector:4318 (see k8s/otel-collector.yaml),
 # which forwards to Dynatrace. No OneAgent required.
 #
@@ -13,11 +13,64 @@
 #        --from-literal=api-token="dt0c01.XXXX" \
 #        --from-literal=dt-endpoint="https://<env>.live.dynatrace.com/api/v2/otlp"
 #   3. kubectl apply -f k8s/
+#
+# Note: nova-postgres uses an emptyDir volume — data is seeded on pod startup.
+# Restart the pod to reset to seed data.
 ---
 apiVersion: v1
 kind: Namespace
 metadata:
   name: nova-mes
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: nova-mes-postgres
+  namespace: nova-mes
+type: Opaque
+stringData:
+  password: nova_mes_demo
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nova-postgres
+  namespace: nova-mes
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: nova-postgres } }
+  template:
+    metadata:
+      labels: { app: nova-postgres }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          command: ["postgres", "-c", "shared_memory_type=mmap"]
+          ports: [{ containerPort: 5432 }]
+          env:
+            - { name: POSTGRES_DB, value: nova_mes }
+            - { name: POSTGRES_USER, value: nova_mes }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: nova-mes-postgres, key: password } }
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "nova_mes"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          volumeMounts:
+            - name: pgdata
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: pgdata
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata: { name: nova-postgres, namespace: nova-mes }
+spec:
+  selector: { app: nova-postgres }
+  ports: [{ port: 5432, targetPort: 5432 }]
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -128,6 +181,9 @@ spec:
               valueFrom: { secretKeyRef: { name: nova-mes-otel, key: tenant-url } }
             - name: DT_API_TOKEN
               valueFrom: { secretKeyRef: { name: nova-mes-otel, key: api-token } }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: nova-mes-postgres, key: password } }
+            - { name: DATABASE_URL, value: "postgresql://nova_mes:$(POSTGRES_PASSWORD)@nova-postgres:5432/nova_mes" }
 ---
 apiVersion: v1
 kind: Service

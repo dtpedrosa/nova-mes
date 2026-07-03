@@ -34,3 +34,8 @@ tolerations:
 dnsConfig:
   options:
     - name: use-vc
+
+postgres:
+  enabled: true
+  password: nova_mes_demo
+  storageSize: 2Gi

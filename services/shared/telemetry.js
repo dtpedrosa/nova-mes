@@ -83,6 +83,9 @@ function startTelemetry(serviceName) {
     instrumentations: [
       getNodeAutoInstrumentations({
         '@opentelemetry/instrumentation-fs': { enabled: false },
+        '@opentelemetry/instrumentation-pg': {
+          dbStatementSerializer: (_op, queryConfig) => queryConfig.text,
+        },
       }),
     ],
   });

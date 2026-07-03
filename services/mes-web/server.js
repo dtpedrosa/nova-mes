@@ -10,23 +10,24 @@ const { makeLogger } = require('../shared/logger');
 const { emitBizEvent } = require('../shared/bizevents');
 const { FlagStore, flagRouter } = require('../shared/flags');
 const { batchContext, orderContext } = require('../shared/domain');
+const { getPool } = require('../shared/db');
+const { initDatabase } = require('./db-init');
 
 const log = makeLogger('nova-mes-web');
 const store = new FlagStore();
 const tracer = trace.getTracer('nova-mes-web');
 const meter = metrics.getMeter('nova-mes-web');
+const pool = getPool();
 
 const BATCH_SVC = process.env.BATCH_SVC_URL || 'http://localhost:4001';
 const DISP_SVC = process.env.DISPENSING_SVC_URL || 'http://localhost:4002';
 const PORT = Number(process.env.PORT || 4000);
-// Where the browser's OTLP traces are forwarded. Point at the collector's HTTP
-// receiver (default 4318). Falls back to OTEL_EXPORTER_OTLP_ENDPOINT if set.
 const RUM_OTLP_TARGET =
   process.env.RUM_OTLP_TARGET ||
   process.env.OTEL_EXPORTER_OTLP_ENDPOINT ||
   'http://localhost:4318';
 
-// ---- Custom metrics (OTLP, delta temporality via shared telemetry) ----
+// ---- Custom metrics ----
 const journeyCounter = meter.createCounter('nova.journey.completed', {
   description: 'Count of completed MES journeys',
 });
@@ -45,9 +46,6 @@ meter
 const app = express();
 
 // ---- Browser RUM OTLP proxy ----
-// The OTel Web SDK POSTs protobuf/JSON to /otlp-proxy/v1/traces. We forward it
-// to the collector server-side. This keeps the Dynatrace token off the browser
-// and sidesteps CORS to the tenant. Raw body parser is scoped to this route only.
 app.post(
   '/otlp-proxy/v1/:signal',
   express.raw({ type: '*/*', limit: '4mb' }),
@@ -55,7 +53,6 @@ app.post(
     try {
       const target = `${RUM_OTLP_TARGET.replace(/\/$/, '')}/v1/${req.params.signal}`;
       const headers = { 'Content-Type': req.headers['content-type'] || 'application/x-protobuf' };
-      // Attach tenant auth here if forwarding straight to Dynatrace instead of a collector.
       (process.env.OTEL_EXPORTER_OTLP_HEADERS || '')
         .split(',').map((s) => s.trim()).filter(Boolean)
         .forEach((pair) => {
@@ -74,7 +71,7 @@ app.post(
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Fan-out flag changes to backend services so one toggle flips the whole system.
+// Fan-out flag changes to backend services.
 async function fanout(pathname, body) {
   await Promise.allSettled(
     [BATCH_SVC, DISP_SVC].map((base) =>
@@ -93,6 +90,91 @@ app.use('/_flags', flagRouter(express, store, async (flag, value) => {
   else await fanout('', { flag, value });
 }));
 
+// ---- DB persistence helpers (fire-and-forget, never throw) ----
+async function persistBatch(bctx, status, exceptions) {
+  if (!pool) return;
+  try {
+    await pool.query(
+      `INSERT INTO batch_records
+         (batch_id, product_code, product_name, status, quantity_units, value_usd,
+          site, line, created_at, released_at, review_exceptions)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW(),
+         CASE WHEN $4='released' THEN NOW() ELSE NULL END, $9)
+       ON CONFLICT (batch_id) DO UPDATE SET
+         status=EXCLUDED.status,
+         released_at=EXCLUDED.released_at,
+         review_exceptions=EXCLUDED.review_exceptions`,
+      [
+        bctx['nova.batch.id'],
+        bctx['nova.product.code'],
+        bctx['nova.product.name'],
+        status,
+        bctx['nova.batch.quantity_units'],
+        bctx['nova.batch.value_usd'],
+        bctx['nova.site'],
+        bctx['nova.line'],
+        exceptions || 0,
+      ]
+    );
+  } catch (err) {
+    log.warn('persistBatch failed', { error: String(err) });
+  }
+}
+
+async function persistWorkOrder(octx, status, actualKg) {
+  if (!pool) return;
+  try {
+    await pool.query(
+      `INSERT INTO work_orders
+         (order_id, material_code, material_name, target_kg, actual_kg,
+          status, site, line, created_at, completed_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW(),
+         CASE WHEN $6='completed' THEN NOW() ELSE NULL END)
+       ON CONFLICT (order_id) DO UPDATE SET
+         status=EXCLUDED.status,
+         actual_kg=EXCLUDED.actual_kg,
+         completed_at=EXCLUDED.completed_at`,
+      [
+        octx['nova.order.id'],
+        octx['nova.material.code'],
+        octx['nova.material.name'],
+        octx['nova.dispense.target_kg'],
+        actualKg || null,
+        status,
+        octx['nova.site'],
+        octx['nova.line'],
+      ]
+    );
+  } catch (err) {
+    log.warn('persistWorkOrder failed', { error: String(err) });
+  }
+}
+
+async function persistDeviation(referenceId, referenceType, severity, description, site) {
+  if (!pool) return;
+  try {
+    await pool.query(
+      `INSERT INTO deviations (reference_id, reference_type, severity, description, site)
+       VALUES ($1,$2,$3,$4,$5)`,
+      [referenceId, referenceType, severity, description, site]
+    );
+  } catch (err) {
+    log.warn('persistDeviation failed', { error: String(err) });
+  }
+}
+
+async function updateEquipmentSeen(equipmentId, readingJson) {
+  if (!pool) return;
+  try {
+    await pool.query(
+      `UPDATE equipment SET last_reading_json=$2, last_seen_at=NOW() WHERE equipment_id=$1`,
+      [equipmentId, readingJson]
+    );
+  } catch (err) {
+    log.warn('updateEquipmentSeen failed', { error: String(err) });
+  }
+}
+
 // ---- Journey 1: Electronic batch record release ----
 app.post('/api/journey/batch-release', async (req, res) => {
   const t0 = Date.now();
@@ -100,16 +182,15 @@ app.post('/api/journey/batch-release', async (req, res) => {
   const bctx = batchContext(batchId);
   const jlog = log.child(bctx);
   let stage = 'accepted';
+  let review = null;
   await tracer.startActiveSpan('journey.batch_release', async (span) => {
     span.setAttributes(bctx);
     try {
       jlog.event('batch.release.started', { 'event.outcome': 'started' });
       await emitBizEvent('batch.release.started', bctx);
 
-      // Step: automated review-by-exception (may be slowed by flag on the batch svc).
       stage = 'review';
-      const review = await callJson(`${BATCH_SVC}/review`, { batchId });
-      // Step: GxP integration to SAP + LIMS (may fail by flag).
+      review = await callJson(`${BATCH_SVC}/review`, { batchId });
       stage = 'gxp_release';
       const gxp = await callJson(`${BATCH_SVC}/gxp-release`, { batchId });
 
@@ -132,6 +213,7 @@ app.post('/api/journey/batch-release', async (req, res) => {
       });
       span.end();
       res.json({ ok: true, batchId, review, gxp, durMs: dur });
+      persistBatch(bctx, 'released', review.exceptions).catch(() => {});
     } catch (err) {
       const dur = Date.now() - t0;
       journeyErrors.add(1, { journey: 'batch_release' });
@@ -146,11 +228,17 @@ app.post('/api/journey/batch-release', async (req, res) => {
       });
       span.end();
       res.status(502).json({ ok: false, batchId, error: String(err.message || err) });
+      persistBatch(bctx, 'failed', review ? review.exceptions : 0).catch(() => {});
+      persistDeviation(
+        bctx['nova.batch.id'], 'batch', 'major',
+        `${stage}: ${String(err.message || err)}`,
+        bctx['nova.site']
+      ).catch(() => {});
     }
   });
 });
 
-// ---- Journey 2: Shop-floor deviation (weigh & dispense) ----
+// ---- Journey 2: Shop-floor weigh & dispense ----
 app.post('/api/journey/dispense', async (req, res) => {
   const t0 = Date.now();
   const orderId = (req.body && req.body.orderId) || `WO-${5000 + Math.floor(Math.random() * 999)}`;
@@ -177,6 +265,8 @@ app.post('/api/journey/dispense', async (req, res) => {
       });
       span.end();
       res.json({ ok: true, orderId, weigh, durMs: dur });
+      persistWorkOrder(octx, 'completed', weigh.netWeightKg).catch(() => {});
+      updateEquipmentSeen('SCALE-L3-02', { net_kg: weigh.netWeightKg, unit: 'kg' }).catch(() => {});
     } catch (err) {
       const dur = Date.now() - t0;
       journeyErrors.add(1, { journey: 'dispense' });
@@ -190,13 +280,106 @@ app.post('/api/journey/dispense', async (req, res) => {
       });
       span.end();
       res.status(502).json({ ok: false, orderId, error: String(err.message || err) });
+      persistWorkOrder(octx, 'deviation', null).catch(() => {});
+      persistDeviation(
+        octx['nova.order.id'], 'work_order', 'minor',
+        String(err.message || err),
+        octx['nova.site']
+      ).catch(() => {});
     }
   });
 });
 
-// RUM error-injection probe: the frontend reads this flag to decide whether to
-// throw a JS error inside a user action (see public/app.js).
+// RUM error-injection probe
 app.get('/api/flags/rum', (_req, res) => res.json({ rum_js_error: store.get('rum_js_error') }));
+
+// ---- Database query routes ----
+app.get('/api/batches', async (_req, res) => {
+  if (!pool) return res.json([]);
+  try {
+    const { rows } = await pool.query(
+      'SELECT * FROM batch_records ORDER BY created_at DESC LIMIT 50'
+    );
+    res.json(rows);
+  } catch (err) {
+    log.error('batches query failed', { error: String(err) });
+    res.status(500).json({ error: 'query failed' });
+  }
+});
+
+app.get('/api/work-orders', async (_req, res) => {
+  if (!pool) return res.json([]);
+  try {
+    const { rows } = await pool.query(
+      'SELECT * FROM work_orders ORDER BY created_at DESC LIMIT 50'
+    );
+    res.json(rows);
+  } catch (err) {
+    log.error('work-orders query failed', { error: String(err) });
+    res.status(500).json({ error: 'query failed' });
+  }
+});
+
+app.get('/api/equipment', async (_req, res) => {
+  if (!pool) return res.json([]);
+  try {
+    const { rows } = await pool.query(
+      'SELECT * FROM equipment ORDER BY site, line'
+    );
+    res.json(rows);
+  } catch (err) {
+    log.error('equipment query failed', { error: String(err) });
+    res.status(500).json({ error: 'query failed' });
+  }
+});
+
+app.get('/api/deviations', async (_req, res) => {
+  if (!pool) return res.json([]);
+  try {
+    const { rows } = await pool.query(
+      'SELECT * FROM deviations ORDER BY created_at DESC LIMIT 50'
+    );
+    res.json(rows);
+  } catch (err) {
+    log.error('deviations query failed', { error: String(err) });
+    res.status(500).json({ error: 'query failed' });
+  }
+});
+
+app.get('/api/dashboard/kpis', async (_req, res) => {
+  if (!pool) {
+    return res.json({
+      batchesToday: 0, activeWorkOrders: 0, openDeviations: 0, equipmentFaults: 0,
+      recentBatches: [], recentActivity: [],
+    });
+  }
+  try {
+    const kpiRes = await pool.query(`
+      SELECT
+        (SELECT COUNT(*)::int FROM batch_records WHERE created_at >= CURRENT_DATE)     AS "batchesToday",
+        (SELECT COUNT(*)::int FROM work_orders  WHERE status = 'in_progress')          AS "activeWorkOrders",
+        (SELECT COUNT(*)::int FROM deviations   WHERE status = 'open')                 AS "openDeviations",
+        (SELECT COUNT(*)::int FROM equipment    WHERE status = 'fault')                AS "equipmentFaults"
+    `);
+    const batchRes = await pool.query(
+      'SELECT * FROM batch_records ORDER BY created_at DESC LIMIT 10'
+    );
+    const activityRes = await pool.query(`
+      (SELECT 'batch'     AS type, batch_id     AS ref, status, created_at FROM batch_records ORDER BY created_at DESC LIMIT 5)
+      UNION ALL
+      (SELECT 'deviation' AS type, reference_id AS ref, status, created_at FROM deviations    ORDER BY created_at DESC LIMIT 5)
+      ORDER BY created_at DESC LIMIT 5
+    `);
+    res.json({
+      ...kpiRes.rows[0],
+      recentBatches: batchRes.rows,
+      recentActivity: activityRes.rows,
+    });
+  } catch (err) {
+    log.error('kpis query failed', { error: String(err) });
+    res.status(500).json({ error: 'query failed' });
+  }
+});
 
 app.get('/healthz', (_req, res) => res.json({ ok: true, service: 'nova-mes-web' }));
 
@@ -211,4 +394,6 @@ async function callJson(url, body) {
   return json;
 }
 
-app.listen(PORT, () => log.info(`nova-mes-web listening on :${PORT}`));
+initDatabase(pool)
+  .catch((err) => log.warn('db init failed, continuing without DB', { error: String(err) }))
+  .finally(() => app.listen(PORT, () => log.info(`nova-mes-web listening on :${PORT}`)));

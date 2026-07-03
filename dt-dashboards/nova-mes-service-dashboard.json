@@ -1,0 +1,158 @@
+{
+  "version": 18,
+  "variables": [],
+  "tiles": {
+    "0": {
+      "type": "markdown",
+      "title": "",
+      "content": "# Nova MES — Service & Infrastructure Health\nSRE view of the three Nova MES services (`nova-mes-web`, `nova-batch-service`, `nova-dispensing-service`) in the `nova-mes` namespace. RED metrics from service request telemetry, custom OpenTelemetry latency histograms (`nova.*`), and log health. Nova pods are OTel-only, so resource signals come from service and journey instrumentation."
+    },
+    "1": {
+      "type": "data",
+      "title": "Avg Response Time (ms)",
+      "query": "timeseries rt = avg(dt.service.request.response_time, scalar:true), by:{dt.entity.service}\n| fieldsAdd svc = entityName(dt.entity.service)\n| filter in(svc, {\"nova-mes-web\", \"nova-batch-service\", \"nova-dispensing-service\"})\n| summarize rt = avg(rt)\n| fieldsAdd `Avg Response Time (ms)` = rt / 1000.0\n| fields `Avg Response Time (ms)`",
+      "visualization": "singleValue",
+      "visualizationSettings": {
+        "thresholds": [
+          { "value": 0, "color": "#7dc540" },
+          { "value": 750, "color": "#f5d30f" },
+          { "value": 1500, "color": "#dc172a" }
+        ],
+        "singleValue": { "showLabel": true, "label": "Avg Response Time (ms)", "autoscale": true, "recordField": "Avg Response Time (ms)" }
+      }
+    },
+    "2": {
+      "type": "data",
+      "title": "Total Requests",
+      "query": "timeseries reqs = sum(dt.service.request.count, scalar:true), by:{dt.entity.service}\n| fieldsAdd svc = entityName(dt.entity.service)\n| filter in(svc, {\"nova-mes-web\", \"nova-batch-service\", \"nova-dispensing-service\"})\n| summarize `Total Requests` = sum(reqs)",
+      "visualization": "singleValue",
+      "visualizationSettings": {
+        "thresholds": [],
+        "singleValue": { "showLabel": true, "label": "Total Requests", "autoscale": true, "recordField": "Total Requests" }
+      }
+    },
+    "3": {
+      "type": "data",
+      "title": "Failure Rate %",
+      "query": "timeseries { fails = sum(dt.service.request.failure_count, scalar:true), reqs = sum(dt.service.request.count, scalar:true) }, by:{dt.entity.service}\n| fieldsAdd svc = entityName(dt.entity.service)\n| filter in(svc, {\"nova-mes-web\", \"nova-batch-service\", \"nova-dispensing-service\"})\n| summarize f = sum(fails), r = sum(reqs)\n| fieldsAdd `Failure Rate %` = f * 100.0 / r\n| fields `Failure Rate %`",
+      "visualization": "singleValue",
+      "visualizationSettings": {
+        "thresholds": [
+          { "value": 0, "color": "#7dc540" },
+          { "value": 1, "color": "#f5d30f" },
+          { "value": 5, "color": "#dc172a" }
+        ],
+        "singleValue": { "showLabel": true, "label": "Failure Rate %", "autoscale": true, "recordField": "Failure Rate %" }
+      }
+    },
+    "4": {
+      "type": "data",
+      "title": "Error / Warn Logs",
+      "query": "fetch logs\n| filter k8s.namespace.name == \"nova-mes\"\n| filter in(loglevel, {\"ERROR\", \"WARN\"})\n| summarize `Error/Warn Logs` = count()",
+      "visualization": "singleValue",
+      "visualizationSettings": {
+        "thresholds": [
+          { "value": 0, "color": "#7dc540" },
+          { "value": 1, "color": "#f5d30f" },
+          { "value": 50, "color": "#dc172a" }
+        ],
+        "singleValue": { "showLabel": true, "label": "Error / Warn Logs", "autoscale": true, "recordField": "Error/Warn Logs" }
+      }
+    },
+    "5": {
+      "type": "data",
+      "title": "Request Throughput by Service",
+      "query": "timeseries requests = sum(dt.service.request.count), by:{dt.entity.service}\n| fieldsAdd Service = entityName(dt.entity.service)\n| filter in(Service, {\"nova-mes-web\", \"nova-batch-service\", \"nova-dispensing-service\"})",
+      "visualization": "lineChart",
+      "visualizationSettings": { "thresholds": [], "chartSettings": { "gapPolicy": "connect" } }
+    },
+    "6": {
+      "type": "data",
+      "title": "Response Time by Service",
+      "query": "timeseries `response time` = avg(dt.service.request.response_time), by:{dt.entity.service}\n| fieldsAdd Service = entityName(dt.entity.service)\n| filter in(Service, {\"nova-mes-web\", \"nova-batch-service\", \"nova-dispensing-service\"})",
+      "visualization": "lineChart",
+      "visualizationSettings": { "thresholds": [], "chartSettings": { "gapPolicy": "connect" } }
+    },
+    "7": {
+      "type": "data",
+      "title": "Failure Rate by Service (%)",
+      "query": "timeseries { fails = sum(dt.service.request.failure_count), reqs = sum(dt.service.request.count) }, by:{dt.entity.service}\n| fieldsAdd Service = entityName(dt.entity.service)\n| filter in(Service, {\"nova-mes-web\", \"nova-batch-service\", \"nova-dispensing-service\"})\n| fieldsAdd `failure rate %` = fails[] * 100.0 / reqs[]\n| fieldsRemove fails, reqs",
+      "visualization": "lineChart",
+      "visualizationSettings": { "thresholds": [], "chartSettings": { "gapPolicy": "connect" } }
+    },
+    "8": {
+      "type": "data",
+      "title": "Log Volume by Level",
+      "query": "fetch logs\n| filter k8s.namespace.name == \"nova-mes\"\n| makeTimeseries logs = count(), by:{loglevel}",
+      "visualization": "lineChart",
+      "visualizationSettings": { "thresholds": [], "chartSettings": { "gapPolicy": "connect" } }
+    },
+    "9": {
+      "type": "data",
+      "title": "End-to-End Journey Duration",
+      "query": "timeseries duration = avg(nova.journey.duration), by:{journey}",
+      "visualization": "lineChart",
+      "visualizationSettings": { "thresholds": [], "chartSettings": { "gapPolicy": "connect" } }
+    },
+    "10": {
+      "type": "data",
+      "title": "DB Commit Latency (Oracle)",
+      "query": "timeseries `commit latency` = avg(nova.db.commit_latency), by:{table}",
+      "visualization": "lineChart",
+      "visualizationSettings": { "thresholds": [], "chartSettings": { "gapPolicy": "connect" } }
+    },
+    "11": {
+      "type": "data",
+      "title": "Weigh / Dispense Latency",
+      "query": "timeseries `dispense latency` = avg(nova.dispense.latency), by:{line}",
+      "visualization": "lineChart",
+      "visualizationSettings": { "thresholds": [], "chartSettings": { "gapPolicy": "connect" } }
+    },
+    "12": {
+      "type": "data",
+      "title": "Batches In Progress",
+      "query": "timeseries `batches in progress` = avg(nova.batches.in_progress)",
+      "visualization": "lineChart",
+      "visualizationSettings": { "thresholds": [], "chartSettings": { "gapPolicy": "connect" } }
+    },
+    "13": {
+      "type": "data",
+      "title": "Journeys Completed vs Errors",
+      "query": "timeseries { completed = sum(nova.journey.completed), errors = sum(nova.journey.errors) }, by:{journey}",
+      "visualization": "lineChart",
+      "visualizationSettings": { "thresholds": [], "chartSettings": { "gapPolicy": "connect" } }
+    },
+    "14": {
+      "type": "data",
+      "title": "Service Health Summary",
+      "query": "timeseries { rt = avg(dt.service.request.response_time, scalar:true), reqs = sum(dt.service.request.count, scalar:true), fails = sum(dt.service.request.failure_count, scalar:true) }, by:{dt.entity.service}\n| fieldsAdd Service = entityName(dt.entity.service)\n| filter in(Service, {\"nova-mes-web\", \"nova-batch-service\", \"nova-dispensing-service\"})\n| fieldsAdd `Resp Time (ms)` = rt / 1000.0, Requests = reqs, `Failure %` = fails * 100.0 / reqs\n| fields Service, `Resp Time (ms)`, Requests, `Failure %`\n| sort Requests desc",
+      "visualization": "table",
+      "visualizationSettings": { "thresholds": [] }
+    },
+    "15": {
+      "type": "data",
+      "title": "Recent Errors & Warnings",
+      "query": "fetch logs\n| filter k8s.namespace.name == \"nova-mes\"\n| filter in(loglevel, {\"ERROR\", \"WARN\"})\n| sort timestamp desc\n| fields timestamp, loglevel, service.name, content\n| limit 100",
+      "visualization": "table",
+      "visualizationSettings": { "thresholds": [] }
+    }
+  },
+  "layouts": {
+    "0":  { "x": 0,  "y": 0,  "w": 24, "h": 2 },
+    "1":  { "x": 0,  "y": 2,  "w": 6,  "h": 4 },
+    "2":  { "x": 6,  "y": 2,  "w": 6,  "h": 4 },
+    "3":  { "x": 12, "y": 2,  "w": 6,  "h": 4 },
+    "4":  { "x": 18, "y": 2,  "w": 6,  "h": 4 },
+    "5":  { "x": 0,  "y": 6,  "w": 12, "h": 6 },
+    "6":  { "x": 12, "y": 6,  "w": 12, "h": 6 },
+    "7":  { "x": 0,  "y": 12, "w": 12, "h": 6 },
+    "8":  { "x": 12, "y": 12, "w": 12, "h": 6 },
+    "9":  { "x": 0,  "y": 18, "w": 8,  "h": 6 },
+    "10": { "x": 8,  "y": 18, "w": 8,  "h": 6 },
+    "11": { "x": 16, "y": 18, "w": 8,  "h": 6 },
+    "12": { "x": 0,  "y": 24, "w": 8,  "h": 6 },
+    "13": { "x": 8,  "y": 24, "w": 8,  "h": 6 },
+    "14": { "x": 16, "y": 24, "w": 8,  "h": 6 },
+    "15": { "x": 0,  "y": 30, "w": 24, "h": 8 }
+  }
+}

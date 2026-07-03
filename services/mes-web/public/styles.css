@@ -38,3 +38,301 @@ button.primary:hover { filter: brightness(1.1); }
 .flag { text-align: left; background: #0d1015; border: 1px solid var(--line); color: var(--muted);
   padding: 10px 12px; border-radius: 8px; cursor: pointer; font-size: 13px; }
 .flag.on { border-color: var(--danger); color: #f87171; background: rgba(220,38,38,.08); }
+
+/* ---- App shell layout ---- */
+html, body { height: 100%; }
+body { display: flex; flex-direction: column; }
+.layout-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+.sidebar {
+  width: 200px;
+  flex-shrink: 0;
+  background: var(--card);
+  border-right: 1px solid var(--line);
+  padding: 12px 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.content-area {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+}
+
+/* ---- Sidebar nav ---- */
+.nav-item {
+  display: block;
+  padding: 10px 20px;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 500;
+  border-left: 3px solid transparent;
+  transition: background 0.1s, color 0.1s;
+}
+.nav-item:hover { background: rgba(255,255,255,.04); color: var(--text); }
+.nav-item.active {
+  color: var(--accent);
+  border-left-color: var(--accent);
+  background: rgba(59,130,246,.08);
+}
+.nav-sep {
+  height: 1px;
+  background: var(--line);
+  margin: 8px 16px;
+}
+
+/* ---- Page header ---- */
+.page-header { margin-bottom: 20px; }
+.page-header h1 { margin: 0; font-size: 20px; font-weight: 600; }
+.page-header .page-sub { color: var(--muted); font-size: 13px; margin-top: 4px; }
+
+/* ---- KPI stat tiles ---- */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 24px;
+}
+.kpi-tile {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px 18px;
+}
+.kpi-tile .kpi-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.kpi-tile .kpi-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1;
+}
+.kpi-tile.kpi-warn .kpi-value { color: #fbbf24; }
+.kpi-tile.kpi-danger .kpi-value { color: #f87171; }
+.kpi-tile.kpi-ok .kpi-value { color: #4ade80; }
+
+/* ---- Data tables ---- */
+.table-wrap {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.data-table thead th {
+  padding: 10px 14px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+.data-table thead th:hover { color: var(--text); }
+.data-table thead th .sort-arrow { margin-left: 4px; opacity: 0.5; }
+.data-table tbody td {
+  padding: 11px 14px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+.data-table tbody tr:last-child td { border-bottom: 0; }
+.data-table tbody tr.data-row:hover { background: rgba(255,255,255,.03); cursor: pointer; }
+.detail-cell {
+  background: rgba(255,255,255,.02);
+  padding: 12px 14px 12px 28px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* ---- Badges ---- */
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  white-space: nowrap;
+}
+.badge-released,
+.badge-completed,
+.badge-operational { background: rgba(22,163,74,.15);  color: #4ade80; }
+.badge-failed,
+.badge-deviation,
+.badge-fault        { background: rgba(220,38,38,.15);  color: #f87171; }
+.badge-pending      { background: rgba(152,162,179,.15); color: #98a2b3; }
+.badge-in_review,
+.badge-in_progress,
+.badge-investigating,
+.badge-maintenance  { background: rgba(59,130,246,.15);  color: #60a5fa; }
+.badge-open         { background: rgba(217,119,6,.15);   color: #fbbf24; }
+.badge-closed       { background: rgba(152,162,179,.15); color: #98a2b3; }
+.badge-minor        { background: rgba(217,119,6,.15);   color: #fbbf24; }
+.badge-major        { background: rgba(234,88,12,.15);   color: #fb923c; }
+.badge-critical     { background: rgba(220,38,38,.15);   color: #f87171; }
+.badge-high         { background: rgba(234,88,12,.15);   color: #fb923c; }
+.badge-urgent       { background: rgba(220,38,38,.15);   color: #f87171; }
+.badge-normal       { background: rgba(152,162,179,.15); color: #98a2b3; }
+
+/* ---- Journey result banners ---- */
+.result-banner {
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-top: 14px;
+  font-size: 13px;
+}
+.result-banner.ok {
+  background: rgba(22,163,74,.12);
+  border: 1px solid rgba(22,163,74,.3);
+  color: #4ade80;
+}
+.result-banner.fail {
+  background: rgba(220,38,38,.12);
+  border: 1px solid rgba(220,38,38,.3);
+  color: #f87171;
+}
+.result-banner.running {
+  background: rgba(59,130,246,.08);
+  border: 1px solid rgba(59,130,246,.2);
+  color: var(--muted);
+}
+.result-banner .banner-title { font-weight: 700; margin-bottom: 4px; }
+.result-banner .banner-detail { color: var(--muted); font-size: 12px; }
+
+/* ---- Journey form card at top of data pages ---- */
+.journey-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 18px 20px;
+  margin-bottom: 18px;
+}
+.journey-card h2 { margin: 0 0 12px; font-size: 15px; font-weight: 600; }
+.journey-form { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+.journey-form label { font-size: 12px; color: var(--muted); display: block; }
+.journey-form input { margin-top: 4px; width: 140px; }
+
+/* ---- Equipment cards ---- */
+.equipment-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+.equip-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 18px;
+}
+.equip-card .equip-id {
+  font-size: 11px;
+  color: var(--muted);
+  font-family: ui-monospace, Menlo, monospace;
+  margin-bottom: 2px;
+}
+.equip-card .equip-name { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+.equip-card .equip-meta { font-size: 12px; color: var(--muted); margin-bottom: 12px; }
+.equip-card .equip-readings {
+  font-size: 12px;
+  background: #0d1015;
+  border-radius: 6px;
+  padding: 8px 10px;
+  color: var(--muted);
+  font-family: ui-monospace, Menlo, monospace;
+  line-height: 1.6;
+}
+.equip-card .equip-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.equip-card .equip-last-seen {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 8px;
+}
+
+/* ---- Chart container ---- */
+.chart-wrap {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 18px;
+  margin-bottom: 24px;
+}
+.chart-wrap h3 {
+  margin: 0 0 14px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+/* ---- Activity feed ---- */
+.activity-wrap {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+.activity-wrap h3 {
+  margin: 0;
+  padding: 12px 16px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  border-bottom: 1px solid var(--line);
+}
+.activity-feed { list-style: none; padding: 0; margin: 0; }
+.activity-feed li {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.activity-feed li:last-child { border-bottom: 0; }
+.activity-time { color: var(--muted); font-size: 11px; margin-left: auto; white-space: nowrap; }
+.activity-empty { padding: 20px 16px; color: var(--muted); font-size: 13px; text-align: center; }
+
+/* ---- Dashboard lower section ---- */
+.dashboard-lower {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 14px;
+}
+
+/* ---- Empty state ---- */
+.empty-state {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+.empty-state strong { display: block; margin-bottom: 6px; color: var(--text); font-size: 15px; }

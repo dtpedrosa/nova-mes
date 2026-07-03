@@ -64,6 +64,15 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            {{- if .Values.postgres.enabled }}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-postgres
+                  key: db-password
+            - name: DATABASE_URL
+              value: "postgresql://nova_mes:$(DB_PASSWORD)@{{ .Release.Name }}-postgres.{{ .Release.Namespace }}.svc.cluster.local:5432/nova_mes"
+            {{- end }}
 ---
 apiVersion: v1
 kind: Service

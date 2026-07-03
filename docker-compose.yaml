@@ -22,6 +22,7 @@ x-app-env: &app-env
   DT_API_TOKEN: ${DT_API_TOKEN:-}
   NOVA_SITE: Northgate
   DEPLOY_ENV: demo
+  DATABASE_URL: postgresql://nova_mes:nova_mes_demo@postgres:5432/nova_mes
 
 services:
   otel-collector:
@@ -33,6 +34,22 @@ services:
       DT_ENDPOINT: ${DT_ENDPOINT:-https://example.live.dynatrace.com/api/v2/otlp}
       DT_API_TOKEN: ${DT_API_TOKEN:-dummy-token-local-only}
     ports: ["4317:4317", "4318:4318"]
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: nova_mes
+      POSTGRES_USER: nova_mes
+      POSTGRES_PASSWORD: nova_mes_demo
+    ports: ["5432:5432"]
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nova_mes"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
 
   batch-service:
     build: { context: ., dockerfile: Dockerfile }
@@ -64,7 +81,15 @@ services:
       BATCH_SVC_URL: http://batch-service:4001
       DISPENSING_SVC_URL: http://dispensing-service:4002
     ports: ["4000:4000"]
-    depends_on: [batch-service, dispensing-service, otel-collector]
+    depends_on:
+      batch-service:
+        condition: service_started
+      dispensing-service:
+        condition: service_started
+      otel-collector:
+        condition: service_started
+      postgres:
+        condition: service_healthy
 
   loadgen:
     build: { context: ., dockerfile: Dockerfile }
@@ -74,3 +99,6 @@ services:
       RPS: "2"
       RELEASE_MIX: "0.4"
     depends_on: [mes-web]
+
+volumes:
+  postgres-data:

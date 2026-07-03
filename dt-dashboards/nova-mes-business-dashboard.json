@@ -1,0 +1,156 @@
+{
+  "version": 18,
+  "variables": [
+    {
+      "key": "site",
+      "type": "query",
+      "visible": true,
+      "input": "fetch logs | filter isNotNull(`nova.site`) | summarize by:{`nova.site`} | fields site = `nova.site`",
+      "multiple": true
+    },
+    {
+      "key": "line",
+      "type": "query",
+      "visible": true,
+      "input": "fetch logs | filter isNotNull(`nova.line`) | summarize by:{`nova.line`} | fields line = `nova.line`",
+      "multiple": true
+    }
+  ],
+  "tiles": {
+    "0": {
+      "type": "markdown",
+      "title": "",
+      "content": "# Nova MES — Business Overview\nManufacturing execution KPIs derived from OpenTelemetry business-event logs (`event.name` / `nova.*`). Batch release (line-2) and weigh-and-dispense (line-3)."
+    },
+    "1": {
+      "type": "data",
+      "title": "Value Released (USD)",
+      "query": "fetch logs\n| filter `event.name` == \"batch.release.completed\"\n| filter in(`nova.site`, array($site)) or $site == \"\"\n| summarize `Value Released` = sum(`nova.batch.value_usd`)",
+      "visualization": "singleValue",
+      "visualizationSettings": {
+        "thresholds": [],
+        "singleValue": { "showLabel": true, "label": "Value Released (USD)", "autoscale": true, "recordField": "Value Released" },
+        "unitsOverrides": [ { "identifier": "Value Released", "unitCategory": "none", "displayUnit": "none" } ]
+      }
+    },
+    "2": {
+      "type": "data",
+      "title": "Units Released",
+      "query": "fetch logs\n| filter `event.name` == \"batch.release.completed\"\n| summarize `Units` = sum(`nova.batch.quantity_units`)",
+      "visualization": "singleValue",
+      "visualizationSettings": {
+        "thresholds": [],
+        "singleValue": { "showLabel": true, "label": "Units Released", "autoscale": true, "recordField": "Units" }
+      }
+    },
+    "3": {
+      "type": "data",
+      "title": "Batches Released",
+      "query": "fetch logs\n| filter `event.name` == \"batch.release.completed\"\n| summarize `Batches` = count()",
+      "visualization": "singleValue",
+      "visualizationSettings": {
+        "thresholds": [],
+        "singleValue": { "showLabel": true, "label": "Batches Released", "autoscale": true, "recordField": "Batches" }
+      }
+    },
+    "4": {
+      "type": "data",
+      "title": "Batch Release Success Rate",
+      "query": "fetch logs\n| filter `event.name` == \"batch.release.completed\" or `event.name` == \"batch.release.failed\"\n| summarize success_rate = countIf(`event.outcome` == \"released\") * 100.0 / count()",
+      "visualization": "singleValue",
+      "visualizationSettings": {
+        "thresholds": [
+          { "value": 90, "color": "#7dc540" },
+          { "value": 75, "color": "#f5d30f" },
+          { "value": 0, "color": "#dc172a" }
+        ],
+        "singleValue": { "showLabel": true, "label": "Release Success %", "autoscale": true, "recordField": "success_rate" }
+      }
+    },
+    "5": {
+      "type": "data",
+      "title": "Value Released Over Time by Product",
+      "query": "fetch logs\n| filter `event.name` == \"batch.release.completed\"\n| makeTimeseries value_usd = sum(`nova.batch.value_usd`), by:{`nova.product.name`}",
+      "visualization": "lineChart",
+      "visualizationSettings": { "thresholds": [], "chartSettings": { "gapPolicy": "connect" } }
+    },
+    "6": {
+      "type": "data",
+      "title": "Batch Outcomes",
+      "query": "fetch logs\n| filter `event.name` == \"batch.release.completed\" or `event.name` == \"batch.release.failed\"\n| summarize count = count(), by:{`event.outcome`}",
+      "visualization": "donutChart",
+      "visualizationSettings": { "thresholds": [] }
+    },
+    "7": {
+      "type": "data",
+      "title": "First-Pass Yield by Line (%)",
+      "query": "fetch logs\n| filter `event.name` == \"batch.release.completed\"\n| summarize fpy = countIf(`nova.batch.first_pass` == true) * 100.0 / count(), by:{`nova.line`}\n| sort fpy desc",
+      "visualization": "barChart",
+      "visualizationSettings": { "thresholds": [] }
+    },
+    "8": {
+      "type": "data",
+      "title": "Batch Release Failures by Stage",
+      "query": "fetch logs\n| filter `event.name` == \"batch.release.failed\"\n| summarize failures = count(), by:{`nova.failure.stage`}\n| sort failures desc",
+      "visualization": "barChart",
+      "visualizationSettings": { "thresholds": [] }
+    },
+    "9": {
+      "type": "data",
+      "title": "Units Released by Product",
+      "query": "fetch logs\n| filter `event.name` == \"batch.release.completed\"\n| summarize units = sum(`nova.batch.quantity_units`), by:{`nova.product.name`}\n| sort units desc",
+      "visualization": "barChart",
+      "visualizationSettings": { "thresholds": [] }
+    },
+    "10": {
+      "type": "data",
+      "title": "Dispense Tolerance Conformance by Material (%)",
+      "query": "fetch logs\n| filter `event.name` == \"dispense.weighed\"\n| summarize conformance_pct = countIf(`nova.dispense.within_tolerance` == true) * 100.0 / count(), by:{`nova.material.name`}\n| sort conformance_pct desc",
+      "visualization": "barChart",
+      "visualizationSettings": {
+        "thresholds": [
+          { "value": 98, "color": "#7dc540" },
+          { "value": 95, "color": "#f5d30f" },
+          { "value": 0, "color": "#dc172a" }
+        ]
+      }
+    },
+    "11": {
+      "type": "data",
+      "title": "Dispense Throughput Over Time",
+      "query": "fetch logs\n| filter `event.name` == \"dispense.completed\"\n| makeTimeseries dispenses = count()",
+      "visualization": "lineChart",
+      "visualizationSettings": { "thresholds": [], "chartSettings": { "gapPolicy": "connect" } }
+    },
+    "12": {
+      "type": "data",
+      "title": "Avg Net-Weight Deviation by Material (kg)",
+      "query": "fetch logs\n| filter `event.name` == \"dispense.weighed\"\n| summarize avg_deviation_kg = avg(`nova.dispense.deviation_kg`), max_deviation_kg = max(abs(`nova.dispense.deviation_kg`)), by:{`nova.material.name`}\n| sort avg_deviation_kg desc",
+      "visualization": "table",
+      "visualizationSettings": { "thresholds": [] }
+    },
+    "13": {
+      "type": "data",
+      "title": "Recent Business Events",
+      "query": "fetch logs\n| filter isNotNull(`event.name`)\n| sort timestamp desc\n| fields timestamp, `event.name`, `event.outcome`, `nova.site`, `nova.line`, `nova.product.name`, `nova.material.name`, `nova.batch.value_usd`, `nova.failure.stage`\n| limit 100",
+      "visualization": "table",
+      "visualizationSettings": { "thresholds": [] }
+    }
+  },
+  "layouts": {
+    "0":  { "x": 0,  "y": 0,  "w": 24, "h": 2 },
+    "1":  { "x": 0,  "y": 2,  "w": 6,  "h": 4 },
+    "2":  { "x": 6,  "y": 2,  "w": 6,  "h": 4 },
+    "3":  { "x": 12, "y": 2,  "w": 6,  "h": 4 },
+    "4":  { "x": 18, "y": 2,  "w": 6,  "h": 4 },
+    "5":  { "x": 0,  "y": 6,  "w": 12, "h": 6 },
+    "6":  { "x": 12, "y": 6,  "w": 6,  "h": 6 },
+    "7":  { "x": 18, "y": 6,  "w": 6,  "h": 6 },
+    "8":  { "x": 0,  "y": 12, "w": 8,  "h": 6 },
+    "9":  { "x": 8,  "y": 12, "w": 8,  "h": 6 },
+    "10": { "x": 16, "y": 12, "w": 8,  "h": 6 },
+    "11": { "x": 0,  "y": 18, "w": 12, "h": 6 },
+    "12": { "x": 12, "y": 18, "w": 12, "h": 6 },
+    "13": { "x": 0,  "y": 24, "w": 24, "h": 8 }
+  }
+}

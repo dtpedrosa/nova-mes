@@ -12,6 +12,7 @@
     to Dynatrace. W3C trace context links browser spans to backend spans.
   -->
   <link rel="stylesheet" href="/styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script type="module" src="/rum-otel.js"></script>
 </head>
 <body>
@@ -21,38 +22,20 @@
     <div id="health" class="health ok">System healthy</div>
   </header>
 
-  <main class="grid">
-    <section class="card">
-      <h2>Journey 1 — Electronic batch record release</h2>
-      <p class="sub">Quality reviewer releases a finished batch. Traced end to end; audit trail auto-generated.</p>
-      <div class="row">
-        <label>Batch ID <input id="batchId" value="NX-88431" /></label>
-      </div>
-      <button id="btn-release" class="primary" data-action="Release batch">Release batch</button>
-      <pre id="out-release" class="out" aria-live="polite"></pre>
-    </section>
-
-    <section class="card">
-      <h2>Journey 2 — Weigh &amp; dispense (deviation RCA)</h2>
-      <p class="sub">Shop-floor dispensing step. Watch latency / exceptions surface when faults are on.</p>
-      <div class="row">
-        <label>Work order <input id="orderId" value="WO-5117" /></label>
-      </div>
-      <button id="btn-dispense" class="primary" data-action="Dispense material">Dispense material</button>
-      <pre id="out-dispense" class="out" aria-live="polite"></pre>
-    </section>
-
-    <section class="card control">
-      <h2>Demo control panel — fault injection</h2>
-      <p class="sub">Flip a scenario or an individual flag, then re-run a journey to turn the demo red on command.</p>
-      <div class="scenarios">
-        <button data-scenario="healthy" class="chip">Reset · healthy</button>
-        <button data-scenario="deviation" class="chip warn">Scenario · dispensing deviation</button>
-        <button data-scenario="release_failure" class="chip danger">Scenario · release failure</button>
-      </div>
-      <div id="flags" class="flags"></div>
-    </section>
-  </main>
+  <div class="layout-body">
+    <nav class="sidebar">
+      <a href="#dashboard"   class="nav-item" data-page="dashboard">Dashboard</a>
+      <a href="#batches"     class="nav-item" data-page="batches">Batch Records</a>
+      <a href="#work-orders" class="nav-item" data-page="work-orders">Work Orders</a>
+      <a href="#equipment"   class="nav-item" data-page="equipment">Equipment</a>
+      <a href="#deviations"  class="nav-item" data-page="deviations">Deviations</a>
+      <div class="nav-sep"></div>
+      <a href="#control"     class="nav-item" data-page="control">Control Panel</a>
+    </nav>
+    <main id="content" class="content-area">
+      <!-- page content injected by router in app.js -->
+    </main>
+  </div>
 
   <script src="/app.js"></script>
 </body>
