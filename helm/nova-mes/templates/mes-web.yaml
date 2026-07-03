@@ -37,7 +37,12 @@ spec:
             - name: RUM_OTLP_TARGET
               value: "http://{{ .Release.Name }}-otel-collector.{{ .Release.Namespace }}.svc.cluster.local:4318"
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: {{ if .Values.collector.endpoint }}{{ .Values.collector.endpoint | quote }}{{ else }}"http://{{ .Release.Name }}-otel-collector.{{ .Release.Namespace }}.svc.cluster.local:4318"{{ end }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-otel
+                  key: dt-endpoint
+            - name: DEPLOY_ENV
+              value: {{ .Values.deployEnv | quote }}
             - name: DT_TENANT_URL
               valueFrom:
                 secretKeyRef:
@@ -48,6 +53,18 @@ spec:
                 secretKeyRef:
                   name: {{ .Release.Name }}-otel
                   key: dt-api-token
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
 ---
 apiVersion: v1
 kind: Service

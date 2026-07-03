@@ -2,38 +2,29 @@
 /*
  * Shared OpenTelemetry bootstrap for all Nova MES services.
  *
- * Emits to an OTLP endpoint (Dynatrace ActiveGate / OTel collector):
- *   - Traces  (spans)         -> /v1/traces
- *   - Metrics (OTLP metrics)  -> /v1/metrics   (DELTA temporality: Dynatrace-native)
- *   - Logs    (OTLP logs)     -> /v1/logs      (trace-correlated)
+ * Sends traces, metrics, and logs via OTLP/HTTP+Protobuf directly to Dynatrace.
+ * Dynatrace requires protobuf encoding; the *-otlp-proto packages handle this.
  *
- * Environment variables (all optional; sensible defaults for local run):
- *   OTEL_EXPORTER_OTLP_ENDPOINT   e.g. https://<env>.live.dynatrace.com/api/v2/otlp
- *   OTEL_EXPORTER_OTLP_HEADERS    e.g. Authorization=Api-Token dt0c01.XXXX
- *   OTEL_SERVICE_NAME             overridden per-service below
- *   DT_TENANT_URL                 base tenant URL, used for the bizevents ingest helper
- *   DT_API_TOKEN                  token with bizevents.ingest + metrics.ingest scopes
+ * Required env vars (injected by Helm):
+ *   OTEL_EXPORTER_OTLP_ENDPOINT  e.g. https://<env>.sprint.dynatracelabs.com/api/v2/otlp
+ *   DT_API_TOKEN                  Dynatrace API token (logs.ingest, metrics.ingest, openTelemetryTrace.ingest)
+ *   OTEL_SERVICE_NAME             set per-deployment in Helm template
  *
- * NOTE on metric temporality:
- *   Dynatrace ingests DELTA temporality natively. We set
- *   OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=delta so we do NOT need a
- *   cumulativetodelta processor in the collector for THIS app's OTLP metrics.
- *   (The collector-side cumulativetodelta processor in otel/ remains available
- *    for third-party cumulative sources such as the Astronomy Shop demo.)
+ * Optional:
+ *   OTEL_EXPORTER_OTLP_HEADERS   extra headers as k=v,k2=v2 (applied after DT_API_TOKEN)
+ *   OTEL_METRIC_EXPORT_INTERVAL   milliseconds, default 15000
+ *   OTEL_DIAG=1                   enable verbose OTel SDK diagnostics
  */
 
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
-const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-http');
-const { OTLPLogExporter } = require('@opentelemetry/exporter-logs-otlp-http');
+const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-proto');
+const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-proto');
+const { OTLPLogExporter } = require('@opentelemetry/exporter-logs-otlp-proto');
 const { PeriodicExportingMetricReader, AggregationTemporality } = require('@opentelemetry/sdk-metrics');
 const { BatchLogRecordProcessor } = require('@opentelemetry/sdk-logs');
 const { Resource } = require('@opentelemetry/resources');
-const {
-  ATTR_SERVICE_NAME,
-  ATTR_SERVICE_VERSION,
-} = require('@opentelemetry/semantic-conventions');
+const { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } = require('@opentelemetry/semantic-conventions');
 const { diag, DiagConsoleLogger, DiagLogLevel } = require('@opentelemetry/api');
 
 function startTelemetry(serviceName) {
@@ -41,11 +32,13 @@ function startTelemetry(serviceName) {
     diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.INFO);
   }
 
-  const endpoint =
-    process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318';
+  const endpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318';
 
-  // Parse OTEL_EXPORTER_OTLP_HEADERS ("k1=v1,k2=v2") into an object.
+  // DT_API_TOKEN is the primary auth source; OTEL_EXPORTER_OTLP_HEADERS can add/override.
   const headers = {};
+  if (process.env.DT_API_TOKEN) {
+    headers['Authorization'] = `Api-Token ${process.env.DT_API_TOKEN}`;
+  }
   (process.env.OTEL_EXPORTER_OTLP_HEADERS || '')
     .split(',')
     .map((s) => s.trim())
@@ -61,14 +54,14 @@ function startTelemetry(serviceName) {
     'deployment.environment': process.env.DEPLOY_ENV || 'demo',
     'nova.site': process.env.NOVA_SITE || 'Northgate',
     'nova.line': process.env.NOVA_LINE || 'line-2',
+    // Kubernetes metadata via Downward API
+    'k8s.pod.name': process.env.POD_NAME || '',
+    'k8s.namespace.name': process.env.POD_NAMESPACE || '',
+    'k8s.node.name': process.env.NODE_NAME || '',
   });
 
-  const traceExporter = new OTLPTraceExporter({
-    url: `${endpoint}/v1/traces`,
-    headers,
-  });
+  const traceExporter = new OTLPTraceExporter({ url: `${endpoint}/v1/traces`, headers });
 
-  // DELTA temporality — Dynatrace-native, avoids cumulative rejection.
   const metricReader = new PeriodicExportingMetricReader({
     exporter: new OTLPMetricExporter({
       url: `${endpoint}/v1/metrics`,

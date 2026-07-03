@@ -16,7 +16,7 @@ deployEnv: demo
 
 collector:
   image: otel/opentelemetry-collector-contrib:0.127.0
-  endpoint: ""  # Set to ClusterIP:port to bypass gVisor DNS (e.g. http://34.x.x.x:4318)
+  endpoint: ""  # unused; kept for reference
 
 loadgen:
   enabled: true
