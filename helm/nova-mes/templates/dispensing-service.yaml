@@ -31,10 +31,7 @@ spec:
             - name: NOVA_SITE
               value: {{ .Values.novaSite | quote }}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Release.Name }}-otel
-                  key: dt-endpoint
+              value: "http://{{ .Release.Name }}-otel-collector.{{ .Release.Namespace }}.svc.cluster.local:4318"
             - name: DEPLOY_ENV
               value: {{ .Values.deployEnv | quote }}
             - name: DT_TENANT_URL
