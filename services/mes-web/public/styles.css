@@ -289,6 +289,10 @@ body { display: flex; flex-direction: column; }
   text-transform: uppercase;
   letter-spacing: .06em;
 }
+/* Fixed-height, relatively-positioned box constrains the canvas so Chart.js
+   (responsive + maintainAspectRatio:false) can't grow it on each refresh. */
+.chart-box { position: relative; height: 240px; width: 100%; }
+.chart-box canvas { position: absolute; inset: 0; }
 
 /* ---- Activity feed ---- */
 .activity-wrap {

@@ -132,7 +132,7 @@
       '<div class="kpi-grid" id="kpi-grid"></div>' +
       '<div class="dashboard-lower">' +
         '<div>' +
-          '<div class="chart-wrap"><h3>Recent batch value (USD)</h3><canvas id="batch-chart" height="180"></canvas></div>' +
+          '<div class="chart-wrap"><h3>Recent batch value (USD)</h3><div class="chart-box"><canvas id="batch-chart"></canvas></div></div>' +
         '</div>' +
         '<div class="activity-wrap"><h3>Recent activity</h3><ul class="activity-feed" id="activity-feed"></ul></div>' +
       '</div>';
@@ -163,28 +163,37 @@
 
     function renderChart(batches) {
       var ctx = document.getElementById('batch-chart');
-      if (!ctx) return;
-      if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
-      if (!batches || !batches.length) return;
+      if (!ctx || !batches || !batches.length) return;
+
+      var labels = batches.map(function(b) { return b.batch_id; });
+      var data = batches.map(function(b) { return parseFloat(b.value_usd) || 0; });
+      var bg = batches.map(function(b) {
+        return b.status === 'failed' ? 'rgba(220,38,38,.6)' : 'rgba(59,130,246,.6)';
+      });
+      var bd = batches.map(function(b) {
+        return b.status === 'failed' ? 'rgba(220,38,38,1)' : 'rgba(59,130,246,1)';
+      });
+
+      // Update data in place on refresh — avoids destroy/recreate flicker.
+      if (chartInstance) {
+        chartInstance.data.labels = labels;
+        chartInstance.data.datasets[0].data = data;
+        chartInstance.data.datasets[0].backgroundColor = bg;
+        chartInstance.data.datasets[0].borderColor = bd;
+        chartInstance.update();
+        return;
+      }
+
       chartInstance = new Chart(ctx, {
         type: 'bar',
         data: {
-          labels: batches.map(function(b) { return b.batch_id; }),
-          datasets: [{
-            label: 'Value (USD)',
-            data: batches.map(function(b) { return parseFloat(b.value_usd) || 0; }),
-            backgroundColor: batches.map(function(b) {
-              return b.status === 'failed' ? 'rgba(220,38,38,.6)' : 'rgba(59,130,246,.6)';
-            }),
-            borderColor: batches.map(function(b) {
-              return b.status === 'failed' ? 'rgba(220,38,38,1)' : 'rgba(59,130,246,1)';
-            }),
-            borderWidth: 1,
-          }],
+          labels: labels,
+          datasets: [{ label: 'Value (USD)', data: data, backgroundColor: bg, borderColor: bd, borderWidth: 1 }],
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          animation: false,
           plugins: {
             legend: { display: false },
             tooltip: { callbacks: { label: function(ctx) { return '$' + ctx.parsed.y.toLocaleString(); } } },
@@ -192,6 +201,7 @@
           scales: {
             x: { ticks: { color: '#98a2b3', font: { size: 9 }, maxRotation: 45 }, grid: { color: '#262c34' } },
             y: {
+              beginAtZero: true,
               ticks: { color: '#98a2b3', font: { size: 10 }, callback: function(v) { return '$' + (v/1000).toFixed(0) + 'k'; } },
               grid: { color: '#262c34' },
             },
