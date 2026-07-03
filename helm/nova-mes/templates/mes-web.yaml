@@ -37,7 +37,7 @@ spec:
             - name: RUM_OTLP_TARGET
               value: "http://{{ .Release.Name }}-otel-collector.{{ .Release.Namespace }}.svc.cluster.local:4318"
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "http://{{ .Release.Name }}-otel-collector.{{ .Release.Namespace }}.svc.cluster.local:4318"
+              value: {{ if .Values.collector.endpoint }}{{ .Values.collector.endpoint | quote }}{{ else }}"http://{{ .Release.Name }}-otel-collector.{{ .Release.Namespace }}.svc.cluster.local:4318"{{ end }}
             - name: DT_TENANT_URL
               valueFrom:
                 secretKeyRef:

@@ -31,7 +31,7 @@ spec:
             - name: NOVA_SITE
               value: {{ .Values.novaSite | quote }}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "http://{{ .Release.Name }}-otel-collector.{{ .Release.Namespace }}.svc.cluster.local:4318"
+              value: {{ if .Values.collector.endpoint }}{{ .Values.collector.endpoint | quote }}{{ else }}"http://{{ .Release.Name }}-otel-collector.{{ .Release.Namespace }}.svc.cluster.local:4318"{{ end }}
             - name: DT_TENANT_URL
               valueFrom:
                 secretKeyRef:
