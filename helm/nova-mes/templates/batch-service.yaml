@@ -13,9 +13,7 @@ spec:
       labels:
         app: {{ .Release.Name }}-batch-service
     spec:
-      runtimeClassName: {{ .Values.runtimeClassName }}
       tolerations: {{- toYaml .Values.tolerations | nindent 8 }}
-      dnsConfig: {{- toYaml .Values.dnsConfig | nindent 8 }}
       containers:
         - name: batch
           image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
@@ -31,7 +29,10 @@ spec:
             - name: NOVA_SITE
               value: {{ .Values.novaSite | quote }}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "http://{{ .Release.Name }}-otel-collector.{{ .Release.Namespace }}.svc.cluster.local:4318"
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-otel
+                  key: dt-endpoint
             - name: DEPLOY_ENV
               value: {{ .Values.deployEnv | quote }}
             - name: DT_TENANT_URL
