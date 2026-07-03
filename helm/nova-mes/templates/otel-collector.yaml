@@ -63,9 +63,7 @@ spec:
       labels:
         app: {{ .Release.Name }}-otel-collector
     spec:
-      runtimeClassName: {{ .Values.runtimeClassName }}
       tolerations: {{- toYaml .Values.tolerations | nindent 8 }}
-      dnsConfig: {{- toYaml .Values.dnsConfig | nindent 8 }}
       containers:
         - name: collector
           image: {{ .Values.collector.image }}
@@ -84,8 +82,6 @@ spec:
                 secretKeyRef:
                   name: {{ .Release.Name }}-otel
                   key: dt-api-token
-            - name: GODEBUG
-              value: "http2client=0"
           volumeMounts:
             - name: config
               mountPath: /etc/otel
