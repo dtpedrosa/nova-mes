@@ -55,6 +55,9 @@ spec:
             - { name: POSTGRES_USER, value: nova_mes }
             - name: POSTGRES_PASSWORD
               valueFrom: { secretKeyRef: { name: nova-mes-postgres, key: password } }
+            # emptyDir is empty, but keep PGDATA in a subdir for parity with the Helm
+            # StatefulSet (whose PVC mount point contains a lost+found directory).
+            - { name: PGDATA, value: /var/lib/postgresql/data/pgdata }
           readinessProbe:
             exec:
               command: ["pg_isready", "-U", "nova_mes"]

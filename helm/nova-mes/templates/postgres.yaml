@@ -45,6 +45,10 @@ spec:
                 secretKeyRef:
                   name: {{ .Release.Name }}-postgres
                   key: db-password
+            # PVC root contains a lost+found dir; initdb refuses a non-empty mount
+            # point, so keep the data cluster in a subdirectory.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
           volumeMounts:
             - name: pgdata
               mountPath: /var/lib/postgresql/data
