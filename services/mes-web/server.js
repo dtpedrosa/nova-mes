@@ -9,6 +9,7 @@ const { metrics, trace, SpanStatusCode } = require('@opentelemetry/api');
 const { makeLogger } = require('../shared/logger');
 const { emitBizEvent } = require('../shared/bizevents');
 const { FlagStore, flagRouter } = require('../shared/flags');
+const { batchContext, orderContext } = require('../shared/domain');
 
 const log = makeLogger('nova-mes-web');
 const store = new FlagStore();
@@ -86,7 +87,7 @@ async function fanout(pathname, body) {
   );
 }
 app.use('/_flags', flagRouter(express, store, async (flag, value) => {
-  log.warn('feature flag changed', { flag, value });
+  log.event('flag.changed', { 'event.outcome': 'changed', 'nova.flag.name': flag, 'nova.flag.value': value });
   if (flag === 'scenario') await fanout('/scenario', { scenario: value });
   else if (flag === '*') await fanout('/reset', {});
   else await fanout('', { flag, value });
@@ -96,33 +97,53 @@ app.use('/_flags', flagRouter(express, store, async (flag, value) => {
 app.post('/api/journey/batch-release', async (req, res) => {
   const t0 = Date.now();
   const batchId = (req.body && req.body.batchId) || `NX-${88000 + Math.floor(Math.random() * 999)}`;
+  const bctx = batchContext(batchId);
+  const jlog = log.child(bctx);
+  let stage = 'accepted';
   await tracer.startActiveSpan('journey.batch_release', async (span) => {
-    span.setAttribute('nova.batch.id', batchId);
+    span.setAttributes(bctx);
     try {
-      log.info('batch release started', { batchId });
-      await emitBizEvent('batch.release.started', { batchId, line: 'line-2' });
+      jlog.event('batch.release.started', { 'event.outcome': 'started' });
+      await emitBizEvent('batch.release.started', bctx);
 
       // Step: automated review-by-exception (may be slowed by flag on the batch svc).
+      stage = 'review';
       const review = await callJson(`${BATCH_SVC}/review`, { batchId });
       // Step: GxP integration to SAP + LIMS (may fail by flag).
+      stage = 'gxp_release';
       const gxp = await callJson(`${BATCH_SVC}/gxp-release`, { batchId });
 
       const dur = Date.now() - t0;
+      const firstPass = review.exceptions === 0;
       journeyCounter.add(1, { journey: 'batch_release', outcome: 'released' });
       journeyDuration.record(dur, { journey: 'batch_release' });
       await emitBizEvent('batch.released', {
-        batchId, line: 'line-2', exceptions: review.exceptions,
-        cycleTimeDays: 2.1, sap: gxp.sap, lims: gxp.lims,
+        ...bctx, exceptions: review.exceptions, cycleTimeDays: 2.1, sap: gxp.sap, lims: gxp.lims,
       });
-      log.info('batch released', { batchId, durMs: dur });
+      jlog.event('batch.release.completed', {
+        'event.outcome': 'released',
+        'nova.review.parameters_scanned': review.parametersScanned,
+        'nova.review.exceptions': review.exceptions,
+        'nova.batch.first_pass': firstPass,
+        'nova.gxp.sap_status': gxp.sap && gxp.sap.status,
+        'nova.gxp.lims_status': gxp.lims && gxp.lims.status,
+        'nova.batch.cycle_time_days': 2.1,
+        'nova.batch.duration_ms': dur,
+      });
       span.end();
       res.json({ ok: true, batchId, review, gxp, durMs: dur });
     } catch (err) {
+      const dur = Date.now() - t0;
       journeyErrors.add(1, { journey: 'batch_release' });
       span.recordException(err);
       span.setStatus({ code: SpanStatusCode.ERROR, message: String(err.message || err) });
-      await emitBizEvent('batch.release.failed', { batchId, reason: String(err.message || err) });
-      log.error('batch release failed', { batchId, error: String(err.message || err) });
+      await emitBizEvent('batch.release.failed', { ...bctx, stage, reason: String(err.message || err) });
+      jlog.event('batch.release.failed', {
+        'event.outcome': 'failed',
+        'nova.failure.stage': stage,
+        'nova.failure.reason': String(err.message || err),
+        'nova.batch.duration_ms': dur,
+      });
       span.end();
       res.status(502).json({ ok: false, batchId, error: String(err.message || err) });
     }
@@ -133,27 +154,40 @@ app.post('/api/journey/batch-release', async (req, res) => {
 app.post('/api/journey/dispense', async (req, res) => {
   const t0 = Date.now();
   const orderId = (req.body && req.body.orderId) || `WO-${5000 + Math.floor(Math.random() * 999)}`;
+  const octx = orderContext(orderId);
+  const jlog = log.child(octx);
   await tracer.startActiveSpan('journey.dispense', async (span) => {
-    span.setAttribute('nova.order.id', orderId);
+    span.setAttributes(octx);
     try {
-      log.info('dispense started', { orderId });
-      await emitBizEvent('dispense.started', { orderId, line: 'line-3', material: 'API-lot-4471' });
+      jlog.event('dispense.started', { 'event.outcome': 'started' });
+      await emitBizEvent('dispense.started', octx);
 
       const weigh = await callJson(`${DISP_SVC}/weigh`, { orderId });
 
       const dur = Date.now() - t0;
       journeyCounter.add(1, { journey: 'dispense', outcome: 'ok' });
       journeyDuration.record(dur, { journey: 'dispense' });
-      await emitBizEvent('dispense.completed', { orderId, line: 'line-3', netWeightKg: weigh.netWeightKg, durMs: dur });
-      log.info('dispense completed', { orderId, durMs: dur });
+      await emitBizEvent('dispense.completed', { ...octx, netWeightKg: weigh.netWeightKg, durMs: dur });
+      jlog.event('dispense.completed', {
+        'event.outcome': 'completed',
+        'nova.dispense.net_weight_kg': weigh.netWeightKg,
+        'nova.dispense.deviation_kg': weigh.deviationKg,
+        'nova.dispense.within_tolerance': weigh.withinTolerance,
+        'nova.dispense.duration_ms': dur,
+      });
       span.end();
       res.json({ ok: true, orderId, weigh, durMs: dur });
     } catch (err) {
+      const dur = Date.now() - t0;
       journeyErrors.add(1, { journey: 'dispense' });
       span.recordException(err);
       span.setStatus({ code: SpanStatusCode.ERROR, message: String(err.message || err) });
-      await emitBizEvent('dispense.deviation', { orderId, line: 'line-3', reason: String(err.message || err) });
-      log.error('dispense deviation raised', { orderId, error: String(err.message || err) });
+      await emitBizEvent('dispense.deviation', { ...octx, reason: String(err.message || err) });
+      jlog.event('dispense.deviation', {
+        'event.outcome': 'deviation',
+        'nova.failure.reason': String(err.message || err),
+        'nova.dispense.duration_ms': dur,
+      });
       span.end();
       res.status(502).json({ ok: false, orderId, error: String(err.message || err) });
     }

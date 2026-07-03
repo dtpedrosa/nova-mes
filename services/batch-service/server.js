@@ -7,6 +7,7 @@ const { metrics, trace, SpanStatusCode } = require('@opentelemetry/api');
 const { makeLogger } = require('../shared/logger');
 const { emitBizEvent } = require('../shared/bizevents');
 const { FlagStore, flagRouter } = require('../shared/flags');
+const { batchContext } = require('../shared/domain');
 
 const log = makeLogger('nova-batch-service');
 const store = new FlagStore();
@@ -31,23 +32,37 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 app.post('/review', async (req, res) => {
   await tracer.startActiveSpan('batch.review_by_exception', async (span) => {
     const batchId = req.body.batchId;
-    span.setAttribute('nova.batch.id', batchId);
+    const bctx = batchContext(batchId);
+    const rlog = log.child(bctx);
+    span.setAttributes(bctx);
+    const t0 = Date.now();
     try {
-      if (store.get('slow_review')) {
-        log.warn('slow_review flag active', { batchId });
+      const degraded = store.get('slow_review');
+      if (degraded) {
+        rlog.warn('review-by-exception degraded (slow_review flag)', { 'nova.review.degraded': true });
         await sleep(2500 + Math.random() * 500);
       }
       // Simulate scanning 400 process parameters against the golden batch.
+      const parametersScanned = 400;
       const exceptions = 3;
+      const dur = Date.now() - t0;
       reviewExceptions.record(exceptions, { batch: batchId });
-      await emitBizEvent('batch.review.completed', { batchId, parametersScanned: 400, exceptions });
-      log.info('review completed', { batchId, exceptions });
+      await emitBizEvent('batch.review.completed', { ...bctx, parametersScanned, exceptions });
+      rlog.event('batch.review.completed', {
+        'event.outcome': 'completed',
+        'nova.review.parameters_scanned': parametersScanned,
+        'nova.review.exceptions': exceptions,
+        'nova.review.first_pass': exceptions === 0,
+        'nova.review.degraded': degraded,
+        'nova.review.duration_ms': dur,
+      });
       span.setAttribute('nova.review.exceptions', exceptions);
       span.end();
-      res.json({ ok: true, exceptions, parametersScanned: 400 });
+      res.json({ ok: true, exceptions, parametersScanned });
     } catch (err) {
       span.recordException(err);
       span.setStatus({ code: SpanStatusCode.ERROR });
+      rlog.event('batch.review.failed', { 'event.outcome': 'failed', 'nova.failure.reason': String(err.message || err) });
       span.end();
       res.status(500).json({ ok: false, error: String(err.message || err) });
     }
@@ -58,13 +73,17 @@ app.post('/review', async (req, res) => {
 app.post('/gxp-release', async (req, res) => {
   await tracer.startActiveSpan('batch.gxp_release', async (span) => {
     const batchId = req.body.batchId;
-    span.setAttribute('nova.batch.id', batchId);
+    const bctx = batchContext(batchId);
+    const glog = log.child(bctx);
+    span.setAttributes(bctx);
+    const t0 = Date.now();
+    let stage = 'oracle_commit';
     try {
       // Simulated Oracle commit — a child span models the DB call.
       await tracer.startActiveSpan('oracle.commit', async (dbSpan) => {
         dbSpan.setAttribute('db.system', 'oracle');
         dbSpan.setAttribute('db.operation', 'INSERT');
-        const t0 = Date.now();
+        const c0 = Date.now();
         if (store.get('db_error_batch_release')) {
           const e = new Error('ORA-00060: deadlock detected while acquiring batch-release lock');
           dbSpan.recordException(e);
@@ -73,22 +92,35 @@ app.post('/gxp-release', async (req, res) => {
           throw e;
         }
         await sleep(30 + Math.random() * 40);
-        dbCommitLatency.record(Date.now() - t0, { table: 'batch_release' });
+        dbCommitLatency.record(Date.now() - c0, { table: 'batch_release' });
         dbSpan.end();
       });
 
       // Downstream GxP systems.
+      stage = 'sap_integration';
       const sap = await callSystem('SAP', 120, span);
+      stage = 'lims_integration';
       const lims = await callSystem('LIMS', 210, span);
 
-      await emitBizEvent('batch.gxp.released', { batchId, sap, lims });
-      log.info('gxp release ok', { batchId, sap, lims });
+      const dur = Date.now() - t0;
+      await emitBizEvent('batch.gxp.released', { ...bctx, sap, lims });
+      glog.event('batch.gxp.released', {
+        'event.outcome': 'released',
+        'nova.gxp.sap_status': sap && sap.status,
+        'nova.gxp.lims_status': lims && lims.status,
+        'nova.gxp.duration_ms': dur,
+      });
       span.end();
       res.json({ ok: true, sap, lims });
     } catch (err) {
       span.recordException(err);
       span.setStatus({ code: SpanStatusCode.ERROR, message: String(err.message || err) });
-      log.error('gxp release failed', { batchId, error: String(err.message || err) });
+      glog.event('batch.gxp.failed', {
+        'event.outcome': 'failed',
+        'nova.failure.stage': stage,
+        'nova.failure.reason': String(err.message || err),
+        'nova.gxp.duration_ms': Date.now() - t0,
+      });
       span.end();
       res.status(502).json({ ok: false, error: String(err.message || err) });
     }
