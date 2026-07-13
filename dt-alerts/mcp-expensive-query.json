@@ -1,0 +1,29 @@
+{
+  "schemaId": "builtin:davis.anomaly-detectors",
+  "scope": "tenant",
+  "value": {
+    "title": "MCP — expensive single query (> 5 GB scanned)",
+    "description": "Fires one alert per MCP-driven Grail query that scans more than 5 GB in the last 15 minutes. The scan volume is the primary MCP cost driver, so a single very large query is a governance red flag (missing filters, too-wide timeframe, or wrong bucket).",
+    "enabled": true,
+    "source": "Davis Anomaly Detection",
+    "analyzer": {
+      "name": "dt.statistics.anomaly_detection.RecordAnomalyDetectionAnalyzer",
+      "input": [
+        {
+          "key": "query.expression",
+          "value": "fetch dt.system.events, from: -15m\n| filter event.kind == \"QUERY_EXECUTION_EVENT\" and contains(client.client_context, \"dynatrace-mcp\")\n| filter isNotNull(query_string)\n| summarize scanned_bytes = sum(scanned_bytes), user = takeFirst(user.email), table = takeFirst(table), by:{query_id, query_string}\n| fieldsAdd scanned_gb = round(scanned_bytes / 1000000000.0, decimals: 2)\n| filter scanned_bytes > 5000000000"
+        },
+        { "key": "alertIdentityFields[0]", "value": "query_id" }
+      ]
+    },
+    "eventTemplate": {
+      "properties": [
+        { "key": "event.type", "value": "CUSTOM_ALERT" },
+        { "key": "event.name", "value": "MCP query scanned {scanned_gb} GB (user {user}, table {table})" },
+        { "key": "event.description", "value": "An MCP-driven query scanned {scanned_gb} GB from {table}, exceeding the 5 GB policy limit.\n\nUser: {user}\nQuery: {query_string}\n\nReview the query — add filters, narrow the timeframe, or target a bucket to reduce Grail scan cost." },
+        { "key": "dt.alert_group", "value": "mcp-governance" }
+      ]
+    },
+    "executionSettings": { "actor": "7b081d60-f9fc-443e-8d4d-fd20c512f203" }
+  }
+}

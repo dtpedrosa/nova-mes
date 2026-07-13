@@ -1,0 +1,45 @@
+{
+  "id": "06cdf01c-9109-43b9-95f9-2551b8d7bb12",
+  "title": "MCP Governance — email notification",
+  "ownerType": "USER",
+  "isPrivate": false,
+  "actor": "7b081d60-f9fc-443e-8d4d-fd20c512f203",
+  "tasks": {
+    "send_email_1": {
+      "action": "dynatrace.email:send-email",
+      "description": "Send email",
+      "name": "send_email_1",
+      "input": {
+        "bcc": [],
+        "cc": [],
+        "to": ["dan.pedrosa@dynatrace.com"],
+        "subject": "MCP governance alert: {{ event()[\"event.name\"] | default(\"(no event)\") }}",
+        "content": "**MCP usage governance alert**\n\n**Problem:** {{ event()[\"event.name\"] | default(\"-\") }}\n**Problem ID:** {{ event()[\"event.display_id\"] | default(\"-\") }}\n**Category:** {{ event()[\"event.category\"] | default(\"-\") }}\n**Status:** {{ event()[\"event.status\"] | default(\"-\") }}\n**Started:** {{ event()[\"event.start\"] | default(\"-\") }}\n**Routing group:** {{ event()[\"dt.alert_group\"] | default(\"-\") }}\n\n**Details:**\n{{ event()[\"event.description\"] | default(\"-\") }}\n\n[Open problem in Dynatrace](https://mbr52431.sprint.apps.dynatracelabs.com/ui/apps/dynatrace.davis.problems/problem/{{ event()[\"event.id\"] | default(\"\") }})\n"
+      },
+      "position": { "x": 0, "y": 1 },
+      "predecessors": []
+    }
+  },
+  "trigger": {
+    "eventTrigger": {
+      "isActive": true,
+      "filterQuery": "event.kind == \"DAVIS_PROBLEM\" AND event.status == \"ACTIVE\" AND (event.status_transition == \"CREATED\" OR event.status_transition == \"UPDATED\" OR event.status_transition == \"REOPENED\") AND dt.analysis.ready == true AND (event.category == \"CUSTOM\") AND (matchesPhrase(dt.alert_group, \"mcp-governance\"))",
+      "triggerConfiguration": {
+        "type": "davis-problem",
+        "value": {
+          "analysisReady": true,
+          "categories": { "custom": true },
+          "customFilter": "matchesPhrase(dt.alert_group, \"mcp-governance\")",
+          "entityTags": {},
+          "entityTagsMatch": null,
+          "onProblemClose": false,
+          "problemOpenDuration": null,
+          "severityThreshold": null,
+          "triggerOn": null,
+          "triggerOnUpdateFields": []
+        }
+      },
+      "uniqueExpression": "{{ event()[\"event.id\"] }}-{{ \"open\" if event()[\"event.status\"] == \"ACTIVE\" else \"resolved\" }}-{{ event()[\"dt.davis.last_reopen_timestamp\"] }}"
+    }
+  }
+}

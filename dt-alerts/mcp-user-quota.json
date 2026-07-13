@@ -1,0 +1,29 @@
+{
+  "schemaId": "builtin:davis.anomaly-detectors",
+  "scope": "tenant",
+  "value": {
+    "title": "MCP — user over Grail quota (> 50 GB / 24h)",
+    "description": "Fires one alert per user whose MCP-driven Grail scan volume exceeds 50 GB over a rolling 24h window. Per-user quota enforcement for cost governance. Each user tracks as a separate open alert (alertIdentityFields) that closes when they fall back under quota.",
+    "enabled": true,
+    "source": "Davis Anomaly Detection",
+    "analyzer": {
+      "name": "dt.statistics.anomaly_detection.RecordAnomalyDetectionAnalyzer",
+      "input": [
+        {
+          "key": "query.expression",
+          "value": "fetch dt.system.events, from: -24h\n| filter event.kind == \"QUERY_EXECUTION_EVENT\" and contains(client.client_context, \"dynatrace-mcp\")\n| summarize scanned_bytes = sum(scanned_bytes), queries = countDistinct(query_id), by:{user.email}\n| fieldsAdd scanned_gb = round(scanned_bytes / 1000000000.0, decimals: 2)\n| filter scanned_bytes > 50000000000"
+        },
+        { "key": "alertIdentityFields[0]", "value": "user.email" }
+      ]
+    },
+    "eventTemplate": {
+      "properties": [
+        { "key": "event.type", "value": "CUSTOM_ALERT" },
+        { "key": "event.name", "value": "MCP user over quota: {user.email} scanned {scanned_gb} GB in 24h" },
+        { "key": "event.description", "value": "User {user.email} ran {queries} MCP queries scanning {scanned_gb} GB in the last 24h, exceeding the 50 GB per-user quota." },
+        { "key": "dt.alert_group", "value": "mcp-governance" }
+      ]
+    },
+    "executionSettings": { "actor": "7b081d60-f9fc-443e-8d4d-fd20c512f203" }
+  }
+}

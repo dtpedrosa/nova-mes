@@ -1,0 +1,28 @@
+{
+  "schemaId": "builtin:davis.anomaly-detectors",
+  "scope": "tenant",
+  "value": {
+    "title": "MCP — daily Grail budget exceeded (> 500 GB / 24h)",
+    "description": "Fires a single environment-wide alert when total MCP-driven Grail scan volume exceeds the 500 GB daily budget over a rolling 24h window. The query returns at most one row, so exactly one alert fires; it closes automatically when total consumption drops back under budget.",
+    "enabled": true,
+    "source": "Davis Anomaly Detection",
+    "analyzer": {
+      "name": "dt.statistics.anomaly_detection.RecordAnomalyDetectionAnalyzer",
+      "input": [
+        {
+          "key": "query.expression",
+          "value": "fetch dt.system.events, from: -24h\n| filter event.kind == \"QUERY_EXECUTION_EVENT\" and contains(client.client_context, \"dynatrace-mcp\")\n| summarize scanned_bytes = sum(scanned_bytes), queries = countDistinct(query_id), users = countDistinct(user.email)\n| fieldsAdd scanned_gb = round(scanned_bytes / 1000000000.0, decimals: 2)\n| filter scanned_bytes > 500000000000"
+        }
+      ]
+    },
+    "eventTemplate": {
+      "properties": [
+        { "key": "event.type", "value": "CUSTOM_ALERT" },
+        { "key": "event.name", "value": "MCP daily Grail budget exceeded: {scanned_gb} GB in 24h" },
+        { "key": "event.description", "value": "MCP-driven queries scanned {scanned_gb} GB across {queries} queries by {users} users in the last 24h, exceeding the 500 GB daily budget." },
+        { "key": "dt.alert_group", "value": "mcp-governance" }
+      ]
+    },
+    "executionSettings": { "actor": "7b081d60-f9fc-443e-8d4d-fd20c512f203" }
+  }
+}
