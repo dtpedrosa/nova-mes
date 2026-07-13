@@ -1,0 +1,118 @@
+{
+  "version": 18,
+  "variables": [],
+  "tiles": {
+    "0": {
+      "type": "markdown",
+      "title": "",
+      "content": "# Dynatrace MCP Server — Usage Overview\nActivity driven through the Dynatrace MCP Server, derived from Grail query-execution events (`dt.system.events`, `event.kind == \"QUERY_EXECUTION_EVENT\"`) whose `client.client_context` identifies the `dynatrace-mcp-server`. Shows query volume, data scanned (Grail cost driver), active users, targeted data types, and the most expensive queries. Use the time-frame picker to change the reporting window."
+    },
+    "1": {
+      "type": "data",
+      "title": "Total MCP Queries",
+      "query": "fetch dt.system.events\n| filter event.kind == \"QUERY_EXECUTION_EVENT\" and contains(client.client_context, \"dynatrace-mcp\")\n| summarize `Total MCP Queries` = countDistinct(query_id)",
+      "visualization": "singleValue",
+      "visualizationSettings": {
+        "thresholds": [],
+        "singleValue": { "showLabel": true, "label": "Total MCP Queries", "autoscale": true, "recordField": "Total MCP Queries" }
+      }
+    },
+    "2": {
+      "type": "data",
+      "title": "Data Scanned (GB)",
+      "query": "fetch dt.system.events\n| filter event.kind == \"QUERY_EXECUTION_EVENT\" and contains(client.client_context, \"dynatrace-mcp\")\n| summarize bytes = sum(scanned_bytes)\n| fieldsAdd `Data Scanned (GB)` = bytes / 1000000000.0\n| fields `Data Scanned (GB)`",
+      "visualization": "singleValue",
+      "visualizationSettings": {
+        "thresholds": [
+          { "value": 0, "color": "#7dc540" },
+          { "value": 100, "color": "#f5d30f" },
+          { "value": 500, "color": "#dc172a" }
+        ],
+        "singleValue": { "showLabel": true, "label": "Data Scanned (GB)", "autoscale": true, "recordField": "Data Scanned (GB)" }
+      }
+    },
+    "3": {
+      "type": "data",
+      "title": "Records Scanned",
+      "query": "fetch dt.system.events\n| filter event.kind == \"QUERY_EXECUTION_EVENT\" and contains(client.client_context, \"dynatrace-mcp\")\n| summarize `Records Scanned` = sum(scanned_records)",
+      "visualization": "singleValue",
+      "visualizationSettings": {
+        "thresholds": [],
+        "singleValue": { "showLabel": true, "label": "Records Scanned", "autoscale": true, "recordField": "Records Scanned" }
+      }
+    },
+    "4": {
+      "type": "data",
+      "title": "Active Users",
+      "query": "fetch dt.system.events\n| filter event.kind == \"QUERY_EXECUTION_EVENT\" and contains(client.client_context, \"dynatrace-mcp\")\n| summarize `Active Users` = countDistinct(user.email)",
+      "visualization": "singleValue",
+      "visualizationSettings": {
+        "thresholds": [],
+        "singleValue": { "showLabel": true, "label": "Active Users", "autoscale": true, "recordField": "Active Users" }
+      }
+    },
+    "5": {
+      "type": "data",
+      "title": "MCP Queries Over Time",
+      "query": "fetch dt.system.events\n| filter event.kind == \"QUERY_EXECUTION_EVENT\" and contains(client.client_context, \"dynatrace-mcp\")\n| summarize scanned_bytes = sum(scanned_bytes), by:{query_id, timestamp}\n| makeTimeSeries queries = count()",
+      "visualization": "lineChart",
+      "visualizationSettings": { "thresholds": [], "chartSettings": { "gapPolicy": "connect" } }
+    },
+    "6": {
+      "type": "data",
+      "title": "Data Scanned Over Time (bytes)",
+      "query": "fetch dt.system.events\n| filter event.kind == \"QUERY_EXECUTION_EVENT\" and contains(client.client_context, \"dynatrace-mcp\")\n| makeTimeSeries `scanned bytes` = sum(scanned_bytes)",
+      "visualization": "areaChart",
+      "visualizationSettings": { "thresholds": [], "chartSettings": { "gapPolicy": "connect" } }
+    },
+    "7": {
+      "type": "data",
+      "title": "Data Scanned by Data Type (GB)",
+      "query": "fetch dt.system.events\n| filter event.kind == \"QUERY_EXECUTION_EVENT\" and contains(client.client_context, \"dynatrace-mcp\")\n| filter isNotNull(table) and table != \"\"\n| summarize bytes = sum(scanned_bytes), by:{table}\n| fieldsAdd `Scanned GB` = bytes / 1000000000.0\n| fields table, `Scanned GB`\n| sort `Scanned GB` desc",
+      "visualization": "donutChart",
+      "visualizationSettings": { "thresholds": [] }
+    },
+    "8": {
+      "type": "data",
+      "title": "Queries by Data Type",
+      "query": "fetch dt.system.events\n| filter event.kind == \"QUERY_EXECUTION_EVENT\" and contains(client.client_context, \"dynatrace-mcp\")\n| filter isNotNull(table) and table != \"\"\n| summarize Queries = countDistinct(query_id), by:{table}\n| sort Queries desc",
+      "visualization": "categoricalBarChart",
+      "visualizationSettings": { "thresholds": [] }
+    },
+    "9": {
+      "type": "data",
+      "title": "MCP Client Version",
+      "query": "fetch dt.system.events\n| filter event.kind == \"QUERY_EXECUTION_EVENT\" and contains(client.client_context, \"dynatrace-mcp\")\n| summarize Queries = countDistinct(query_id), by:{client.client_context}\n| sort Queries desc",
+      "visualization": "categoricalBarChart",
+      "visualizationSettings": { "thresholds": [] }
+    },
+    "10": {
+      "type": "data",
+      "title": "Usage by User",
+      "query": "fetch dt.system.events\n| filter event.kind == \"QUERY_EXECUTION_EVENT\" and contains(client.client_context, \"dynatrace-mcp\")\n| summarize Queries = countDistinct(query_id), bytes = sum(scanned_bytes), Records = sum(scanned_records), by:{user.email}\n| fieldsAdd `Scanned GB` = bytes / 1000000000.0\n| fields user.email, Queries, `Scanned GB`, Records\n| sort `Scanned GB` desc\n| limit 50",
+      "visualization": "table",
+      "visualizationSettings": { "thresholds": [] }
+    },
+    "11": {
+      "type": "data",
+      "title": "Top Queries by Data Scanned",
+      "query": "fetch dt.system.events\n| filter event.kind == \"QUERY_EXECUTION_EVENT\" and contains(client.client_context, \"dynatrace-mcp\")\n| filter isNotNull(query_string)\n| summarize bytes = sum(scanned_bytes), Records = sum(scanned_records), table = takeFirst(table), by:{query_id, query_string}\n| fieldsAdd `Scanned GB` = bytes / 1000000000.0\n| fields query_string, table, `Scanned GB`, Records\n| sort `Scanned GB` desc\n| limit 25",
+      "visualization": "table",
+      "visualizationSettings": { "thresholds": [] }
+    }
+  },
+  "layouts": {
+    "0":  { "x": 0,  "y": 0,  "w": 24, "h": 2 },
+    "1":  { "x": 0,  "y": 2,  "w": 6,  "h": 4 },
+    "2":  { "x": 6,  "y": 2,  "w": 6,  "h": 4 },
+    "3":  { "x": 12, "y": 2,  "w": 6,  "h": 4 },
+    "4":  { "x": 18, "y": 2,  "w": 6,  "h": 4 },
+    "5":  { "x": 0,  "y": 6,  "w": 12, "h": 6 },
+    "6":  { "x": 12, "y": 6,  "w": 12, "h": 6 },
+    "7":  { "x": 0,  "y": 12, "w": 8,  "h": 6 },
+    "8":  { "x": 8,  "y": 12, "w": 8,  "h": 6 },
+    "9":  { "x": 16, "y": 12, "w": 8,  "h": 6 },
+    "10": { "x": 0,  "y": 18, "w": 12, "h": 8 },
+    "11": { "x": 12, "y": 18, "w": 12, "h": 8 }
+  }
+}
